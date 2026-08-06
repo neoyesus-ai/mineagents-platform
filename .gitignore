@@ -1,11 +1,16 @@
+# Dependencies and generated output
 node_modules/
 dist/
 coverage/
+*.tsbuildinfo
+
+# Local configuration and secrets
 .env
 .env.*
 !.env.example
+
+# Logs and editor files
 *.log
 .DS_Store
 .idea/
 .vscode/
-*.tsbuildinfo
