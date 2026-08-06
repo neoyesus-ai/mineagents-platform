@@ -21,8 +21,8 @@ const requiredPaths = [
 ];
 
 const expectedWorkspaces = [
-  "coordinator",
   "sdk",
+  "coordinator",
   "agents/*",
   "planner",
   "memory",

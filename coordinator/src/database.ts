@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
+  canTransitionTaskStatus,
   isTaskStatus,
   type AgentRecord,
   type HeartbeatInput,
@@ -12,7 +13,7 @@ import {
   type TaskPatchInput,
   type TaskRecord,
 } from "./domain.js";
-import { NotFoundError } from "./errors.js";
+import { ConflictError, NotFoundError } from "./errors.js";
 
 type Row = Record<string, unknown>;
 
@@ -301,6 +302,12 @@ export class CoordinatorStore {
     }
 
     const nextStatus = input.status ?? current.status;
+    if (!canTransitionTaskStatus(current.status, nextStatus)) {
+      throw new ConflictError(
+        `Cannot transition task '${id}' from '${current.status}' to '${nextStatus}'.`,
+      );
+    }
+
     const startedAt = current.startedAt ?? (nextStatus === 'running' || nextStatus === 'completed' || nextStatus === 'failed' || nextStatus === 'cancelled' ? timestamp : null);
     const completedAt = nextStatus === 'completed' ? timestamp : current.completedAt;
     const failedAt = nextStatus === 'failed' ? timestamp : current.failedAt;

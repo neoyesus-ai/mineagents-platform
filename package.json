@@ -10,8 +10,8 @@
     "npm": ">=10"
   },
   "workspaces": [
-    "coordinator",
     "sdk",
+    "coordinator",
     "agents/*",
     "planner",
     "memory",

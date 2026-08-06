@@ -4,7 +4,7 @@ MineAgents Platform es una plataforma modular para coordinar agentes autónomos 
 
 ## Qué es
 
-La idea central es separar responsabilidades: un coordinator administra tareas y proyectos, los agentes ejecutan trabajo especializado, el planner organizará estrategias de alto nivel, memory conservará contexto, y dashboard mostrará el estado operativo. La base actual ya incluye un coordinator funcional con API REST y persistencia en SQLite; el resto de módulos sigue siendo base arquitectónica.
+La idea central es separar responsabilidades: un coordinator administra tareas y proyectos, los agentes ejecutan trabajo especializado, el planner organizará estrategias de alto nivel, memory conservará contexto, y dashboard mostrará el estado operativo. La base actual incluye un coordinator funcional con API REST y persistencia en SQLite, además de contratos públicos y validación compartida en el SDK; el resto de módulos sigue siendo base arquitectónica.
 
 ## Visión multiagente
 
@@ -14,7 +14,7 @@ La visión es que varios agentes especializados colaboren sobre un mismo proyect
 - El agent collector recopilará información o recursos.
 - El agent builder ejecutará tareas de construcción.
 - El agent explorer inspeccionará zonas y contexto.
-- El SDK compartirá contratos comunes.
+- El SDK comparte contratos, parsers y reglas del ciclo de tareas.
 - Planner, memory y blueprints aportarán planificación, memoria y planos sin mezclar responsabilidades.
 
 La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. Todavía no hay conexión a Minecraft, Mineflayer ni LLM.
@@ -63,6 +63,19 @@ Estados de tarea soportados:
 - `completed`
 - `failed`
 - `cancelled`
+
+Las transiciones válidas son `pending → assigned → running → completed`, con salidas controladas a `failed` o `cancelled`. Los estados terminales no pueden reabrirse.
+
+## SDK v1
+
+`@mineagents/sdk` publica:
+
+- Registros e inputs de agentes, proyectos y tareas.
+- Listas de estados y type guards.
+- Parsers que normalizan y validan datos desconocidos.
+- Reglas compartidas de transición y estados terminales.
+
+El SDK es independiente de HTTP, SQLite y Minecraft. El coordinator lo consume como dependencia de workspace y mantiene temporalmente sus exportaciones de dominio anteriores.
 
 ## Instalación
 

@@ -23,9 +23,9 @@ El roadmap avanza por fases verificables. Completar una fase no habilita automá
 
 ## Fase 2 — Contratos del SDK
 
-- [ ] Definir contratos públicos estables para agentes.
-- [ ] Separar utilidades compartidas de lógica de coordinación.
-- [ ] Añadir pruebas unitarias de contratos.
+- [x] Definir contratos públicos estables para agentes.
+- [x] Separar utilidades compartidas de lógica de coordinación.
+- [x] Añadir pruebas unitarias de contratos.
 
 ## Fase 3 — Agentes del MVP
 

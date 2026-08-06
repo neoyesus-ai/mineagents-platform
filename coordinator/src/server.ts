@@ -1,12 +1,12 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import {
-  isTaskStatus,
-  type ClaimTaskInput,
-  type HeartbeatInput,
-  type ProjectInput,
-  type TaskCreateInput,
-  type TaskPatchInput,
-} from "./domain.js";
+  ContractValidationError,
+  parseClaimTaskInput,
+  parseHeartbeatInput,
+  parseProjectInput,
+  parseTaskCreateInput,
+  parseTaskPatchInput,
+} from "@mineagents/sdk";
 import { AppError, ValidationError } from "./errors.js";
 import { CoordinatorStore } from "./database.js";
 
@@ -66,124 +66,6 @@ const readJsonBody = async (request: IncomingMessage): Promise<unknown> => {
   }
 };
 
-const asRecord = (value: unknown): Record<string, unknown> => {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new ValidationError("Request body must be a JSON object.");
-  }
-
-  return value as Record<string, unknown>;
-};
-
-const requireString = (value: unknown, field: string): string => {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new ValidationError(`Field '${field}' must be a non-empty string.`);
-  }
-
-  return value.trim();
-};
-
-const optionalText = (value: unknown, field: string): string | null => {
-  if (value === undefined || value === null) {
-    return null;
-  }
-
-  if (typeof value !== "string") {
-    throw new ValidationError(`Field '${field}' must be a string or null.`);
-  }
-
-  return value.trim();
-};
-
-const optionalId = (value: unknown, field: string): string | null | undefined => {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (value === null) {
-    return null;
-  }
-
-  if (typeof value !== "string") {
-    throw new ValidationError(`Field '${field}' must be a string or null.`);
-  }
-
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    throw new ValidationError(`Field '${field}' must be a non-empty string or null.`);
-  }
-
-  return trimmed;
-};
-
-const assertKnownKeys = (input: Record<string, unknown>, allowedKeys: string[]): void => {
-  for (const key of Object.keys(input)) {
-    if (!allowedKeys.includes(key)) {
-      throw new ValidationError(`Unknown field '${key}'.`);
-    }
-  }
-};
-
-const validateHeartbeatInput = (body: unknown): HeartbeatInput => {
-  const input = asRecord(body);
-  assertKnownKeys(input, ["id", "name", "role"]);
-
-  return {
-    id: optionalId(input.id, "id") ?? undefined,
-    name: requireString(input.name, "name"),
-    role: optionalText(input.role, "role"),
-  };
-};
-
-const validateProjectInput = (body: unknown): ProjectInput => {
-  const input = asRecord(body);
-  assertKnownKeys(input, ["name", "description"]);
-
-  return {
-    name: requireString(input.name, "name"),
-    description: optionalText(input.description, "description"),
-  };
-};
-
-const validateTaskCreateInput = (body: unknown): TaskCreateInput => {
-  const input = asRecord(body);
-  assertKnownKeys(input, ["title", "description", "projectId"]);
-
-  return {
-    title: requireString(input.title, "title"),
-    description: optionalText(input.description, "description"),
-    projectId: optionalId(input.projectId, "projectId"),
-  };
-};
-
-const validateTaskPatchInput = (body: unknown): TaskPatchInput => {
-  const input = asRecord(body);
-  assertKnownKeys(input, ["title", "description", "projectId", "assignedAgentId", "failureReason", "status"]);
-
-  const status = input.status;
-  if (status !== undefined && !isTaskStatus(status)) {
-    throw new ValidationError("Field 'status' must be a valid task status.");
-  }
-
-  return {
-    title: typeof input.title === "string" ? requireString(input.title, "title") : undefined,
-    description: input.description === undefined ? undefined : optionalText(input.description, "description"),
-    projectId: optionalId(input.projectId, "projectId"),
-    assignedAgentId: optionalId(input.assignedAgentId, "assignedAgentId"),
-    failureReason:
-      input.failureReason === undefined ? undefined : optionalText(input.failureReason, "failureReason"),
-    status: isTaskStatus(status) ? status : undefined,
-  };
-};
-
-const validateClaimInput = (body: unknown): ClaimTaskInput => {
-  const input = asRecord(body);
-  assertKnownKeys(input, ["agentId"]);
-
-  return {
-    agentId: requireString(input.agentId, "agentId"),
-  };
-};
-
 const notFound = (response: ServerResponse<IncomingMessage>): void => {
   sendJson(response, 404, {
     error: {
@@ -219,7 +101,7 @@ export const createCoordinatorRequestHandler = (options: CoordinatorServerOption
       }
 
       if (method === "POST" && url.pathname === "/agents/heartbeat") {
-        const payload = validateHeartbeatInput(await readJsonBody(request));
+        const payload = parseHeartbeatInput(await readJsonBody(request));
         const agent = store.upsertAgentHeartbeat(payload);
         sendJson(response, 200, { agent });
         return;
@@ -231,14 +113,14 @@ export const createCoordinatorRequestHandler = (options: CoordinatorServerOption
       }
 
       if (method === "POST" && url.pathname === "/tasks") {
-        const payload = validateTaskCreateInput(await readJsonBody(request));
+        const payload = parseTaskCreateInput(await readJsonBody(request));
         const task = store.createTask(payload);
         sendJson(response, 201, { task });
         return;
       }
 
       if (method === "POST" && url.pathname === "/tasks/claim") {
-        const payload = validateClaimInput(await readJsonBody(request));
+        const payload = parseClaimTaskInput(await readJsonBody(request));
         const task = store.claimNextTask(payload.agentId);
         if (!task) {
           sendJson(response, 404, {
@@ -256,7 +138,7 @@ export const createCoordinatorRequestHandler = (options: CoordinatorServerOption
 
       const taskMatch = url.pathname.match(/^\/tasks\/([^/]+)$/);
       if (method === "PATCH" && taskMatch) {
-        const payload = validateTaskPatchInput(await readJsonBody(request));
+        const payload = parseTaskPatchInput(await readJsonBody(request));
         const taskId = taskMatch[1];
         if (!taskId) {
           throw new ValidationError("Task id is required.");
@@ -273,7 +155,7 @@ export const createCoordinatorRequestHandler = (options: CoordinatorServerOption
       }
 
       if (method === "POST" && url.pathname === "/projects") {
-        const payload = validateProjectInput(await readJsonBody(request));
+        const payload = parseProjectInput(await readJsonBody(request));
         const project = store.createProject(payload);
         sendJson(response, 201, { project });
         return;
@@ -281,6 +163,14 @@ export const createCoordinatorRequestHandler = (options: CoordinatorServerOption
 
       notFound(response);
     } catch (error) {
+      if (error instanceof ContractValidationError) {
+        const validationError = new ValidationError(error.message);
+        sendJson(response, validationError.statusCode, {
+          error: { code: validationError.code, message: validationError.message },
+        });
+        return;
+      }
+
       if (error instanceof AppError) {
         sendJson(response, error.statusCode, {
           error: {

@@ -23,3 +23,10 @@ export class NotFoundError extends AppError {
     this.name = "NotFoundError";
   }
 }
+
+export class ConflictError extends AppError {
+  constructor(message: string) {
+    super(409, "CONFLICT", message);
+    this.name = "ConflictError";
+  }
+}

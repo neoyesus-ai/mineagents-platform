@@ -85,6 +85,16 @@ test("coordinator persists and serves the main task lifecycle", async (t) => {
   assert.equal(claimedBody.task.status, "assigned");
   assert.equal(claimedBody.task.assignedAgentId, agent.id);
 
+  const startResponse = await globalThis.fetch(`${baseUrl}/tasks/${claimedBody.task.id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ status: "running" }),
+  });
+  assert.equal(startResponse.status, 200);
+  const startedBody = await startResponse.json();
+  assert.equal(startedBody.task.status, "running");
+  assert.equal(typeof startedBody.task.startedAt, "string");
+
   const patchResponse = await globalThis.fetch(`${baseUrl}/tasks/${claimedBody.task.id}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
@@ -93,6 +103,13 @@ test("coordinator persists and serves the main task lifecycle", async (t) => {
   assert.equal(patchResponse.status, 200);
   const patchedBody = await patchResponse.json();
   assert.equal(patchedBody.task.status, "completed");
+
+  const invalidTransitionResponse = await globalThis.fetch(`${baseUrl}/tasks/${claimedBody.task.id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ status: "running" }),
+  });
+  assert.equal(invalidTransitionResponse.status, 409);
 
   const tasksResponse = await globalThis.fetch(`${baseUrl}/tasks`);
   assert.equal(tasksResponse.status, 200);
@@ -121,4 +138,13 @@ test("coordinator rejects invalid task payloads", async (t) => {
   assert.equal(response.status, 400);
   const body = await response.json();
   assert.equal(body.error.code, "VALIDATION_ERROR");
+
+  const invalidPatchResponse = await globalThis.fetch(`${baseUrl}/tasks/missing`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ title: 42 }),
+  });
+  assert.equal(invalidPatchResponse.status, 400);
+  const invalidPatchBody = await invalidPatchResponse.json();
+  assert.equal(invalidPatchBody.error.code, "VALIDATION_ERROR");
 });

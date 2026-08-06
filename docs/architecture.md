@@ -2,7 +2,7 @@
 
 ## Estado actual
 
-MineAgents Platform es un monorepositorio TypeScript con npm workspaces. La base ya incluye un `coordinator` funcional con API REST mínima y persistencia en SQLite. El resto de módulos sigue siendo arquitectura prevista, no lógica de Minecraft ni de agentes LLM.
+MineAgents Platform es un monorepositorio TypeScript con npm workspaces. La base incluye un `coordinator` funcional con API REST mínima y persistencia en SQLite, además de un SDK con contratos públicos y validación compartida. El resto de módulos sigue siendo arquitectura prevista, no lógica de Minecraft ni de agentes LLM.
 
 ## Mapa de componentes
 
@@ -44,12 +44,20 @@ La API REST expuesta es mínima y sin framework:
 
 SQLite se usa como almacén persistente local. La base de datos se inicializa con tablas para agentes, proyectos y tareas, más restricciones básicas para los estados de tarea.
 
+## SDK v1
+
+`@mineagents/sdk` contiene los contratos de agentes, proyectos y tareas que pueden consumir todos los workspaces. También publica parsers para validar datos desconocidos en los límites del sistema y las reglas de transición de tareas.
+
+El SDK no contiene HTTP, SQLite ni lógica de coordinación. El coordinator convierte los errores de contrato a respuestas REST y sigue siendo responsable de almacenar y asignar tareas. La compilación del monorepo sitúa el SDK antes que sus consumidores.
+
+La decisión completa y sus consecuencias se documentan en [ADR 0001](decisions/0001-sdk-contract-boundary.md).
+
 ## Organización del monorepo
 
 Cada workspace de producto tiene su propio `package.json`, `tsconfig.json` y punto de entrada bajo `src/`.
 
 - `coordinator/` contiene la API HTTP, validación de entrada, errores y persistencia.
-- `sdk/` seguirá siendo la capa pública de contratos.
+- `sdk/` contiene la capa pública de contratos y validación compartida.
 - `agents/` separa implementaciones por rol.
 - `planner/`, `memory/` y `dashboard/` quedan como módulos independientes.
 - `blueprints/` centraliza los formatos de construcción.
