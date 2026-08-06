@@ -31,8 +31,8 @@ El roadmap avanza por fases verificables. Completar una fase no habilita automá
 
 - [x] Diseñar un adaptador seguro para Minecraft Java Edition.
 - [x] Implementar el agente recolector.
-- [ ] Implementar el agente constructor.
-- [ ] Definir y validar el formato de planos.
+- [x] Implementar el agente constructor.
+- [x] Definir y validar el formato de planos.
 - [ ] Probar en un mundo desechable dedicado.
 
 ## Fase 4 — Operación

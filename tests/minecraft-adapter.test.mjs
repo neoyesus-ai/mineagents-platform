@@ -30,8 +30,8 @@ const createHarness = ({ policy, verify = async () => true } = {}) => {
     async moveTo(target, allowedRegions) {
       calls.push({ operation: "move", target, allowedRegions });
     },
-    async placeBlock(position, blockName) {
-      calls.push({ operation: "place", position, blockName });
+    async placeBlock(position, blockName, expectedCurrentBlockNames) {
+      calls.push({ operation: "place", position, blockName, expectedCurrentBlockNames });
     },
     async breakBlock(position, expectedBlockName) {
       calls.push({ operation: "break", position, expectedBlockName });
@@ -154,6 +154,11 @@ test("world writes require policy allowance and external approval", async () => 
     operation: "place",
     position,
     blockName: "minecraft:cobblestone",
+    expectedCurrentBlockNames: [
+      "minecraft:air",
+      "minecraft:cave_air",
+      "minecraft:void_air",
+    ],
   });
 
   await assert.rejects(
@@ -190,6 +195,11 @@ test("async verification cannot mutate the validated driver request", async () =
       operation: "place",
       position: { dimension: "minecraft:overworld", x: 4, y: 64, z: 4 },
       blockName: "minecraft:cobblestone",
+      expectedCurrentBlockNames: [
+        "minecraft:air",
+        "minecraft:cave_air",
+        "minecraft:void_air",
+      ],
     },
   ]);
 });

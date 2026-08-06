@@ -4,7 +4,7 @@ MineAgents Platform es una plataforma modular para coordinar agentes autónomos 
 
 ## Qué es
 
-La idea central es separar responsabilidades: un coordinator administra tareas y proyectos, los agentes ejecutan trabajo especializado, el planner organizará estrategias de alto nivel, memory conservará contexto, y dashboard mostrará el estado operativo. La base actual incluye un coordinator funcional con API REST y persistencia en SQLite, además de contratos públicos y validación compartida en el SDK; el resto de módulos sigue siendo base arquitectónica.
+La idea central es separar responsabilidades: un coordinator administra tareas y proyectos, los agentes ejecutan trabajo especializado, el planner organizará estrategias de alto nivel, memory conservará contexto, y dashboard mostrará el estado operativo. La base actual incluye el coordinator persistente, contratos compartidos, acceso seguro simulable a Minecraft, agentes acotados y blueprints validados; planner, memory y dashboard siguen siendo base arquitectónica.
 
 ## Visión multiagente
 
@@ -12,10 +12,10 @@ La visión es que varios agentes especializados colaboren sobre un mismo proyect
 
 - El coordinator asigna y supervisa tareas.
 - El agent collector ejecuta recolecciones acotadas sobre posiciones autorizadas.
-- El agent builder ejecutará tareas de construcción.
+- El agent builder ejecuta colocaciones explícitas sin reemplazar bloques existentes.
 - El agent explorer inspeccionará zonas y contexto.
 - El SDK comparte contratos, parsers y reglas del ciclo de tareas.
-- Planner, memory y blueprints aportarán planificación, memoria y planos sin mezclar responsabilidades.
+- Blueprints ya valida y compila planos; planner y memory aportarán planificación y memoria sin mezclar responsabilidades.
 
 La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. Todavía no hay conexión a Minecraft, Mineflayer ni LLM.
 
@@ -31,7 +31,7 @@ La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. 
 - `planner/`: planificación de alto nivel.
 - `memory/`: persistencia y memoria compartida.
 - `dashboard/`: panel de control.
-- `blueprints/`: planos de construcción.
+- `blueprints/`: formato versionado, validación y compilación de planos.
 - `docs/`: visión, arquitectura y roadmap.
 - `scripts/`: automatizaciones del monorepo.
 - `tests/`: pruebas transversales.
@@ -89,6 +89,18 @@ Todavía no existe un driver de Mineflayer ni conexión a un mundo. Las pruebas 
 `@mineagents/agent-collector` valida solicitudes con posiciones candidatas explícitas, inspecciona primero y sólo rompe coincidencias exactas mediante el adaptador seguro. Ante escasez no modifica nada, salvo que se solicite trabajo parcial de forma expresa.
 
 La cancelación y los fallos conservan el progreso realizado para evitar reintentos ciegos. El resultado representa bloques rotos, no materiales confirmados en inventario; tampoco hay todavía polling del coordinator ni conexión a Minecraft.
+
+## Agente constructor
+
+`@mineagents/agent-builder` valida y deduplica colocaciones absolutas, inspecciona todos los destinos y omite bloques ya correctos. Sólo coloca sobre aire; cualquier bloque distinto detiene la tarea sin escrituras, salvo que se solicite trabajo parcial explícitamente.
+
+El resultado conserva las posiciones colocadas ante cancelaciones o fallos. El builder todavía no interpreta blueprints, verifica inventario ni consume tareas del coordinator.
+
+## Blueprints v1
+
+`@mineagents/blueprints` define un formato JSON estricto con identificador, dimensiones, paleta de bloques y posiciones relativas. Rechaza campos desconocidos, aire, referencias inexistentes, posiciones duplicadas, coordenadas fuera de rango y planos que superen los límites configurados.
+
+`compileBlueprint` traslada un plano validado a colocaciones absolutas compatibles con el builder y calcula la región mínima requerida para solicitar autorización. El módulo no crea autorizaciones, no decide dónde construir y no accede a Minecraft. El esquema completo está en [docs/blueprints.md](docs/blueprints.md).
 
 ## Instalación
 

@@ -2,7 +2,7 @@
 
 ## Estado actual
 
-MineAgents Platform es un monorepositorio TypeScript con npm workspaces. La base incluye un `coordinator` funcional con API REST mínima y persistencia en SQLite, un SDK con contratos públicos y un adaptador seguro y simulable para Minecraft. Todavía no existe un driver real, conexión a un mundo ni lógica de agentes LLM.
+MineAgents Platform es un monorepositorio TypeScript con npm workspaces. La base incluye un `coordinator` funcional con API REST mínima y persistencia en SQLite, un SDK con contratos públicos, un adaptador seguro y simulable para Minecraft y un formato validado de blueprints. Todavía no existe un driver real, conexión a un mundo ni lógica de agentes LLM.
 
 ## Mapa de componentes
 
@@ -73,6 +73,22 @@ La escasez no produce cambios por defecto; el trabajo parcial debe autorizarse e
 
 La decisión y sus límites se documentan en [ADR 0003](decisions/0003-bounded-collector-agent.md).
 
+## Agente constructor
+
+`@mineagents/agent-builder` ejecuta colocaciones absolutas mediante un preflight completo. Deduplica posiciones, omite bloques ya correctos y sólo coloca sobre bloques de aire. Un bloque distinto marca el destino como bloqueado y evita todas las escrituras, salvo que el trabajo parcial sea explícito.
+
+Cancelaciones y errores conservan las posiciones terminadas para soportar reintentos idempotentes. El builder todavía no interpreta planos, comprueba inventario ni se conecta a la cola del coordinator.
+
+La decisión y la política de no reemplazo se documentan en [ADR 0004](decisions/0004-idempotent-builder-agent.md).
+
+## Blueprints v1
+
+`@mineagents/blueprints` es una capa declarativa sin acceso a Minecraft. Valida un documento versionado con dimensiones, paleta y bloques relativos, y lo compila desde un origen absoluto a `BuildPlacement[]` conservando el orden del documento.
+
+La compilación devuelve además la región mínima que contiene las colocaciones, pero no crea una autorización ni inicia el builder. Así, la descripción de la estructura permanece separada de la decisión operativa y del acceso al mundo.
+
+El esquema se documenta en [Blueprints v1](blueprints.md) y la decisión arquitectónica en [ADR 0005](decisions/0005-versioned-blueprint-format.md).
+
 ## Organización del monorepo
 
 Cada workspace de producto tiene su propio `package.json`, `tsconfig.json` y punto de entrada bajo `src/`.
@@ -82,7 +98,7 @@ Cada workspace de producto tiene su propio `package.json`, `tsconfig.json` y pun
 - `minecraft-adapter/` contiene el límite seguro y simulable de acceso al mundo.
 - `agents/` separa implementaciones por rol.
 - `planner/`, `memory/` y `dashboard/` quedan como módulos independientes.
-- `blueprints/` centraliza los formatos de construcción.
+- `blueprints/` valida y compila formatos de construcción versionados.
 - `docs/` documenta decisiones y alcance.
 
 ## Límites y dependencias previstas

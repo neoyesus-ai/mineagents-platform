@@ -58,7 +58,11 @@ export interface MinecraftDriver {
   getState(): Promise<MinecraftAgentState>;
   inspectBlock(position: WorldPosition): Promise<MinecraftBlockSnapshot>;
   moveTo(target: WorldPosition, allowedRegions: readonly WorldRegion[]): Promise<void>;
-  placeBlock(position: WorldPosition, blockName: string): Promise<void>;
+  placeBlock(
+    position: WorldPosition,
+    blockName: string,
+    expectedCurrentBlockNames: readonly string[],
+  ): Promise<void>;
   breakBlock(position: WorldPosition, expectedBlockName: string): Promise<void>;
 }
 

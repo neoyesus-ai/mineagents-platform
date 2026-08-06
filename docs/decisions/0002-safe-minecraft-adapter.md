@@ -19,6 +19,7 @@ Se crea el workspace independiente `@mineagents/minecraft-adapter`. Los agentes 
 - Cada bloque permitido usa un identificador namespaced explícito.
 - Toda escritura requiere una autorización externa verificable, ligada a una tarea, acciones, región, caducidad y cuota máxima.
 - Las cuotas cuentan intentos autorizados, incluso si el driver falla, para evitar reintentos ilimitados.
+- Colocar un bloque exige que el driver confirme atómicamente que el destino sigue siendo aire.
 - Romper un bloque incluye el nombre esperado; el futuro driver deberá comprobarlo de forma atómica antes de modificar el mundo.
 
 `createReadOnlyMinecraftPolicy` es el camino predeterminado: permite inspección dentro de regiones explícitas, desactiva movimiento salvo petición consciente y no autoriza escrituras.

@@ -8,6 +8,9 @@
   "files": [
     "dist"
   ],
+  "dependencies": {
+    "@mineagents/minecraft-adapter": "0.1.0"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"

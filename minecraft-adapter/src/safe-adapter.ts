@@ -36,6 +36,12 @@ interface NormalizedPolicy {
 
 const blockNamePattern = /^[a-z0-9_.-]+:[a-z0-9_./-]+$/;
 
+const emptyBlockNames = [
+  "minecraft:air",
+  "minecraft:cave_air",
+  "minecraft:void_air",
+] as const;
+
 const assertBlockNames = (values: readonly string[]): void => {
   if (!values.every((value) => blockNamePattern.test(value))) {
     throw new MinecraftSafetyError(
@@ -120,7 +126,11 @@ export class SafeMinecraftAdapter implements MinecraftAdapter {
     authorization?: MinecraftAuthorization,
   ): Promise<void> {
     await this.executeWrite("place-block", position, blockName, authorization, (request) =>
-      this.driver.placeBlock(clonePosition(request.position), request.blockName),
+      this.driver.placeBlock(
+        clonePosition(request.position),
+        request.blockName,
+        [...emptyBlockNames],
+      ),
     );
   }
 
