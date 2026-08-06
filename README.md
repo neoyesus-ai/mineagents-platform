@@ -23,6 +23,7 @@ La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. 
 
 - `coordinator/`: API REST, agentes, proyectos, tareas y persistencia SQLite.
 - `sdk/`: contratos públicos y utilidades compartidas para agentes.
+- `minecraft-adapter/`: acceso seguro y simulable a capacidades de Minecraft.
 - `agents/collector/`: agente recolector.
 - `agents/builder/`: agente constructor.
 - `agents/explorer/`: agente explorador.
@@ -77,6 +78,12 @@ Las transiciones válidas son `pending → assigned → running → completed`, 
 
 El SDK es independiente de HTTP, SQLite y Minecraft. El coordinator lo consume como dependencia de workspace y mantiene temporalmente sus exportaciones de dominio anteriores.
 
+## Adaptador seguro de Minecraft
+
+`@mineagents/minecraft-adapter` define una interfaz independiente del cliente real y un guardián que aplica regiones permitidas, límites de movimiento, listas de bloques y autorizaciones externas con caducidad y cuota. `createReadOnlyMinecraftPolicy` desactiva movimiento y escrituras por defecto.
+
+Todavía no existe un driver de Mineflayer ni conexión a un mundo. Las pruebas usan drivers simulados y no leen ni modifican datos de Minecraft.
+
 ## Instalación
 
 ```bash
@@ -121,7 +128,7 @@ docker compose up --build coordinator
 2. Terminar contratos del SDK y de tareas compartidas.
 3. Evolucionar la cola persistente y el manejo de progreso.
 4. Implementar los agentes recolector y constructor sobre límites seguros.
-5. Añadir adaptador de Minecraft en una fase controlada.
+5. Añadir un driver real de Minecraft en una fase controlada y sobre un mundo desechable.
 6. Crear dashboard, métricas y despliegue reproducible.
 
 Fuera del MVP inicial quedan la integración con LLM, la economía entre agentes, las personalidades complejas y la búsqueda de imágenes.

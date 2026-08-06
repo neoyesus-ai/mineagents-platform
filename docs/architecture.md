@@ -2,7 +2,7 @@
 
 ## Estado actual
 
-MineAgents Platform es un monorepositorio TypeScript con npm workspaces. La base incluye un `coordinator` funcional con API REST mínima y persistencia en SQLite, además de un SDK con contratos públicos y validación compartida. El resto de módulos sigue siendo arquitectura prevista, no lógica de Minecraft ni de agentes LLM.
+MineAgents Platform es un monorepositorio TypeScript con npm workspaces. La base incluye un `coordinator` funcional con API REST mínima y persistencia en SQLite, un SDK con contratos públicos y un adaptador seguro y simulable para Minecraft. Todavía no existe un driver real, conexión a un mundo ni lógica de agentes LLM.
 
 ## Mapa de componentes
 
@@ -52,12 +52,26 @@ El SDK no contiene HTTP, SQLite ni lógica de coordinación. El coordinator conv
 
 La decisión completa y sus consecuencias se documentan en [ADR 0001](decisions/0001-sdk-contract-boundary.md).
 
+## Adaptador seguro de Minecraft
+
+```text
+agents ──► SafeMinecraftAdapter ──► MinecraftDriver ──► Minecraft
+                 ▲                       (pendiente)
+                 │
+          policy + verifier
+```
+
+`@mineagents/minecraft-adapter` separa las capacidades que consumen los agentes del futuro cliente de Minecraft. La implementación actual valida regiones, movimiento, bloques permitidos, aprobaciones externas, caducidad y cuotas antes de invocar un driver. La política predeterminada es de sólo lectura y no hay ningún driver real en el repositorio.
+
+La decisión de seguridad completa se documenta en [ADR 0002](decisions/0002-safe-minecraft-adapter.md).
+
 ## Organización del monorepo
 
 Cada workspace de producto tiene su propio `package.json`, `tsconfig.json` y punto de entrada bajo `src/`.
 
 - `coordinator/` contiene la API HTTP, validación de entrada, errores y persistencia.
 - `sdk/` contiene la capa pública de contratos y validación compartida.
+- `minecraft-adapter/` contiene el límite seguro y simulable de acceso al mundo.
 - `agents/` separa implementaciones por rol.
 - `planner/`, `memory/` y `dashboard/` quedan como módulos independientes.
 - `blueprints/` centraliza los formatos de construcción.
