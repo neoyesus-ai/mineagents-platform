@@ -15,10 +15,12 @@ const requiredPaths = [
   "dashboard",
   "blueprints",
   "docs/architecture.md",
+  "docs/dashboard.md",
   "docs/vision.md",
   "docs/roadmap.md",
   "scripts",
   "coordinator/Dockerfile",
+  "dashboard/Dockerfile",
 ];
 
 const expectedWorkspaces = [

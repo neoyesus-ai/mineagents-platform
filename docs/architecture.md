@@ -2,7 +2,7 @@
 
 ## Estado actual
 
-MineAgents Platform es un monorepositorio TypeScript con npm workspaces. La base incluye un `coordinator` funcional con API REST mínima y persistencia en SQLite, un SDK con contratos públicos, un adaptador seguro y simulable para Minecraft y un formato validado de blueprints. Todavía no existe un driver real, conexión a un mundo ni lógica de agentes LLM.
+MineAgents Platform es un monorepositorio TypeScript con npm workspaces. La base incluye un `coordinator` funcional con API REST mínima y persistencia en SQLite, un dashboard operativo de sólo lectura, un SDK con contratos públicos, un adaptador seguro y simulable para Minecraft y un formato validado de blueprints. Todavía no existe un driver real, conexión a un mundo ni lógica de agentes LLM.
 
 ## Mapa de componentes
 
@@ -20,7 +20,7 @@ MineAgents Platform es un monorepositorio TypeScript con npm workspaces. La base
                          └──────┘ └──────────┘              └───────────┘
 ```
 
-El diagrama representa dependencias y flujo previsto. Sólo `coordinator` existe ya como servicio funcional.
+El diagrama representa dependencias y flujo previsto. `coordinator` y `dashboard` existen ya como servicios funcionales; los demás módulos son bibliotecas o bases para servicios futuros.
 
 ## Coordinator v1
 
@@ -89,6 +89,18 @@ La compilación devuelve además la región mínima que contiene las colocacione
 
 El esquema se documenta en [Blueprints v1](blueprints.md) y la decisión arquitectónica en [ADR 0005](decisions/0005-versioned-blueprint-format.md).
 
+## Dashboard de sólo lectura
+
+```text
+navegador ──GET──► dashboard ──GET──► coordinator
+```
+
+`@mineagents/dashboard` agrega las rutas públicas de lectura del coordinator y presenta un snapshot operativo en HTML renderizado en servidor. No reexporta controles de mutación, no accede directamente a SQLite y no conoce Minecraft.
+
+Las respuestas externas se validan antes de renderizarse, el contenido dinámico se escapa y el servidor aplica una política CSP restrictiva. La ausencia del coordinator se representa como un estado 502 controlado. El endpoint `/api/snapshot` permite consumir la misma vista agregada sin duplicar acceso a la base.
+
+La operación se documenta en [Dashboard](dashboard.md) y la separación de lectura en [ADR 0006](decisions/0006-read-only-dashboard.md).
+
 ## Organización del monorepo
 
 Cada workspace de producto tiene su propio `package.json`, `tsconfig.json` y punto de entrada bajo `src/`.
@@ -97,7 +109,8 @@ Cada workspace de producto tiene su propio `package.json`, `tsconfig.json` y pun
 - `sdk/` contiene la capa pública de contratos y validación compartida.
 - `minecraft-adapter/` contiene el límite seguro y simulable de acceso al mundo.
 - `agents/` separa implementaciones por rol.
-- `planner/`, `memory/` y `dashboard/` quedan como módulos independientes.
+- `dashboard/` contiene el cliente HTTP, la vista y su servidor de sólo lectura.
+- `planner/` y `memory/` quedan como módulos independientes.
 - `blueprints/` valida y compila formatos de construcción versionados.
 - `docs/` documenta decisiones y alcance.
 

@@ -13,5 +13,18 @@ services:
     volumes:
       - coordinator-data:/data
 
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    environment:
+      DASHBOARD_PORT: "3001"
+      DASHBOARD_REFRESH_SECONDS: "10"
+      COORDINATOR_URL: http://coordinator:3000
+    depends_on:
+      - coordinator
+    ports:
+      - "3001:3001"
+
 volumes:
   coordinator-data: {}

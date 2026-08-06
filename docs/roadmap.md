@@ -37,7 +37,7 @@ El roadmap avanza por fases verificables. Completar una fase no habilita automá
 
 ## Fase 4 — Operación
 
-- [ ] Crear un dashboard mínimo.
+- [x] Crear un dashboard mínimo.
 - [ ] Añadir métricas y logs estructurados.
 - [ ] Documentar despliegue, respaldo y recuperación.
 - [ ] Ejecutar una prueba integral del flujo del MVP.

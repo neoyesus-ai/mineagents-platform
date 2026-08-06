@@ -23,7 +23,7 @@ Antes de escribir, valida y deduplica toda la solicitud, rechaza tipos distintos
 ## Consecuencias
 
 - El builder no rompe bloques, calcula estructuras ni decide materiales.
-- Un futuro módulo de blueprints producirá colocaciones para este contrato sin controlar Minecraft.
+- El módulo de blueprints produce colocaciones para este contrato sin controlar Minecraft.
 - Toda colocación sigue pasando por `MinecraftAdapter` y su verificador externo.
 - La disponibilidad de materiales, navegación y soportes de colocación quedan a cargo de futuras capas y del driver.
 - Las pruebas usan un adaptador simulado y no acceden a ningún mundo.

@@ -4,7 +4,7 @@ MineAgents Platform es una plataforma modular para coordinar agentes autónomos 
 
 ## Qué es
 
-La idea central es separar responsabilidades: un coordinator administra tareas y proyectos, los agentes ejecutan trabajo especializado, el planner organizará estrategias de alto nivel, memory conservará contexto, y dashboard mostrará el estado operativo. La base actual incluye el coordinator persistente, contratos compartidos, acceso seguro simulable a Minecraft, agentes acotados y blueprints validados; planner, memory y dashboard siguen siendo base arquitectónica.
+La idea central es separar responsabilidades: un coordinator administra tareas y proyectos, los agentes ejecutan trabajo especializado, el planner organizará estrategias de alto nivel, memory conservará contexto, y dashboard muestra el estado operativo. La base actual incluye el coordinator persistente, contratos compartidos, acceso seguro simulable a Minecraft, agentes acotados, blueprints validados y un dashboard de sólo lectura; planner y memory siguen siendo base arquitectónica.
 
 ## Visión multiagente
 
@@ -15,6 +15,7 @@ La visión es que varios agentes especializados colaboren sobre un mismo proyect
 - El agent builder ejecuta colocaciones explícitas sin reemplazar bloques existentes.
 - El agent explorer inspeccionará zonas y contexto.
 - El SDK comparte contratos, parsers y reglas del ciclo de tareas.
+- El dashboard presenta el estado público del coordinator sin exponer escrituras.
 - Blueprints ya valida y compila planos; planner y memory aportarán planificación y memoria sin mezclar responsabilidades.
 
 La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. Todavía no hay conexión a Minecraft, Mineflayer ni LLM.
@@ -30,7 +31,7 @@ La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. 
 - `agents/common/`: piezas compartidas entre agentes.
 - `planner/`: planificación de alto nivel.
 - `memory/`: persistencia y memoria compartida.
-- `dashboard/`: panel de control.
+- `dashboard/`: panel operativo de sólo lectura.
 - `blueprints/`: formato versionado, validación y compilación de planos.
 - `docs/`: visión, arquitectura y roadmap.
 - `scripts/`: automatizaciones del monorepo.
@@ -102,6 +103,12 @@ El resultado conserva las posiciones colocadas ante cancelaciones o fallos. El b
 
 `compileBlueprint` traslada un plano validado a colocaciones absolutas compatibles con el builder y calcula la región mínima requerida para solicitar autorización. El módulo no crea autorizaciones, no decide dónde construir y no accede a Minecraft. El esquema completo está en [docs/blueprints.md](docs/blueprints.md).
 
+## Dashboard mínimo
+
+`@mineagents/dashboard` consulta únicamente `GET /health`, `/agents`, `/tasks` y `/projects` del coordinator. Renderiza métricas, tareas recientes y agentes registrados en HTML sin JavaScript cliente, valida las respuestas del servicio y escapa todo contenido dinámico.
+
+El dashboard publica `GET /`, `GET /health` y `GET /api/snapshot`. Cualquier método distinto de `GET` se rechaza, y una caída del coordinator produce una respuesta controlada sin mostrar datos obsoletos. La configuración y operación se documentan en [docs/dashboard.md](docs/dashboard.md).
+
 ## Instalación
 
 ```bash
@@ -117,6 +124,17 @@ npm run start --workspace @mineagents/coordinator
 ```
 
 Por defecto escucha en `3000` y usa `./data/coordinator.sqlite`.
+
+## Ejecución local del dashboard
+
+Con el coordinator activo:
+
+```bash
+npm run build --workspace @mineagents/dashboard
+COORDINATOR_URL=http://127.0.0.1:3000 npm run start --workspace @mineagents/dashboard
+```
+
+Por defecto el dashboard escucha en `3001` y actualiza la vista cada 10 segundos.
 
 ## Validaciones
 
@@ -134,11 +152,13 @@ npm run typecheck
 
 ## Docker Compose
 
-`docker-compose.yml` ya integra el servicio `coordinator` y un volumen para su base SQLite.
+`docker-compose.yml` integra el coordinator, su volumen SQLite y el dashboard de sólo lectura.
 
 ```bash
-docker compose up --build coordinator
+docker compose up --build
 ```
+
+Coordinator queda disponible en `http://localhost:3000` y dashboard en `http://localhost:3001`.
 
 ## Roadmap inicial
 
@@ -154,6 +174,7 @@ Fuera del MVP inicial quedan la integración con LLM, la economía entre agentes
 ## Documentación
 
 - [Arquitectura](docs/architecture.md)
+- [Dashboard](docs/dashboard.md)
 - [Visión](docs/vision.md)
 - [Roadmap](docs/roadmap.md)
 
