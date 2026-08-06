@@ -1,49 +1,68 @@
 # MineAgents Platform
 
-MineAgents Platform es la base de una plataforma modular para coordinar agentes
-autónomos y colaborativos en Minecraft Java Edition. El proyecto se organiza
-como un monorepositorio TypeScript para que cada componente pueda evolucionar,
-probarse y desplegarse de forma independiente.
+MineAgents Platform es una plataforma modular para coordinar agentes autónomos y colaborativos orientados a Minecraft Java Edition. El repositorio está organizado como un monorepo TypeScript para que cada servicio pueda evolucionar sin acoplarse al resto.
 
-> Estado actual: sólo existe el esqueleto técnico. No hay conexión a Minecraft,
-> agentes funcionales, coordinador, base de datos, dashboard ni integración LLM.
+## Qué es
+
+La idea central es separar responsabilidades: un coordinator administra tareas y proyectos, los agentes ejecutan trabajo especializado, el planner organizará estrategias de alto nivel, memory conservará contexto, y dashboard mostrará el estado operativo. La base actual ya incluye un coordinator funcional con API REST y persistencia en SQLite; el resto de módulos sigue siendo base arquitectónica.
 
 ## Visión multiagente
 
-La visión es que varios agentes especializados colaboren en proyectos comunes.
-Un coordinador asignará tareas; los agentes recolectores, constructores y
-exploradores aportarán capacidades distintas; y los módulos de planificación,
-memoria y planos compartirán contexto sin acoplar las implementaciones.
+La visión es que varios agentes especializados colaboren sobre un mismo proyecto sin competir por el control del sistema.
 
-La plataforma priorizará la supervisión humana, la trazabilidad de cada tarea y
-la protección de los mundos. Ningún módulo de esta fase puede conectarse a un
-servidor o modificar un mundo de Minecraft.
+- El coordinator asigna y supervisa tareas.
+- El agent collector recopilará información o recursos.
+- El agent builder ejecutará tareas de construcción.
+- El agent explorer inspeccionará zonas y contexto.
+- El SDK compartirá contratos comunes.
+- Planner, memory y blueprints aportarán planificación, memoria y planos sin mezclar responsabilidades.
+
+La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. Todavía no hay conexión a Minecraft, Mineflayer ni LLM.
 
 ## Arquitectura prevista
 
-- `coordinator/`: gestión futura de agentes, proyectos y tareas.
-- `sdk/`: contratos y utilidades públicas para crear agentes.
-- `agents/collector/`: futuro agente recolector.
-- `agents/builder/`: futuro agente constructor.
-- `agents/explorer/`: futuro agente explorador.
-- `agents/common/`: piezas compartidas únicamente por los agentes.
-- `planner/`: planificación de alto nivel e integración LLM futura.
-- `memory/`: persistencia y memoria compartida futura.
-- `dashboard/`: panel de control futuro.
-- `blueprints/`: modelos y validación de planos de construcción.
+- `coordinator/`: API REST, agentes, proyectos, tareas y persistencia SQLite.
+- `sdk/`: contratos públicos y utilidades compartidas para agentes.
+- `agents/collector/`: agente recolector.
+- `agents/builder/`: agente constructor.
+- `agents/explorer/`: agente explorador.
+- `agents/common/`: piezas compartidas entre agentes.
+- `planner/`: planificación de alto nivel.
+- `memory/`: persistencia y memoria compartida.
+- `dashboard/`: panel de control.
+- `blueprints/`: planos de construcción.
 - `docs/`: visión, arquitectura y roadmap.
-- `scripts/`: automatizaciones compartidas.
-- `tests/`: pruebas transversales del monorepositorio.
+- `scripts/`: automatizaciones del monorepo.
+- `tests/`: pruebas transversales.
 
-Todos los módulos de producto son npm workspaces privados. Por ahora sólo
-exportan un punto de entrada TypeScript vacío para validar la estructura y los
-límites entre paquetes.
+## Coordinator v1
 
-## Requisitos
+El servicio `coordinator` expone una API mínima sobre SQLite con estas rutas:
 
-- Node.js 22 o posterior.
-- npm 10 o posterior.
-- Docker con Compose, opcional para fases posteriores.
+- `GET /health`
+- `GET /agents`
+- `POST /agents/heartbeat`
+- `GET /tasks`
+- `POST /tasks`
+- `POST /tasks/claim`
+- `PATCH /tasks/:id`
+- `GET /projects`
+- `POST /projects`
+
+Entidades implementadas:
+
+- `Agent`
+- `Task`
+- `Project`
+
+Estados de tarea soportados:
+
+- `pending`
+- `assigned`
+- `running`
+- `completed`
+- `failed`
+- `cancelled`
 
 ## Instalación
 
@@ -52,8 +71,14 @@ npm install
 cp .env.example .env
 ```
 
-El archivo `.env.example` sólo contiene valores locales no sensibles. No
-añadas secretos ni credenciales al repositorio.
+## Ejecución local del coordinator
+
+```bash
+npm run build --workspace @mineagents/coordinator
+npm run start --workspace @mineagents/coordinator
+```
+
+Por defecto escucha en `3000` y usa `./data/coordinator.sqlite`.
 
 ## Validaciones
 
@@ -64,25 +89,29 @@ npm run lint
 npm run typecheck
 ```
 
-- `build` compila todos los workspaces que declaran compilación.
-- `test` ejecuta las pruebas estructurales.
-- `lint` aplica las reglas estáticas a TypeScript y JavaScript.
-- `typecheck` comprueba tipos sin generar archivos.
+- `build` compila todos los workspaces con salida definida.
+- `test` compila primero y luego ejecuta las pruebas del repositorio.
+- `lint` aplica las reglas estáticas.
+- `typecheck` verifica tipos sin emitir archivos.
 
-`docker-compose.yml` es deliberadamente un placeholder sin servicios. Se
-completará cuando exista una implementación que empaquetar.
+## Docker Compose
+
+`docker-compose.yml` ya integra el servicio `coordinator` y un volumen para su base SQLite.
+
+```bash
+docker compose up --build coordinator
+```
 
 ## Roadmap inicial
 
-1. Consolidar el monorepositorio y la integración continua.
-2. Diseñar los contratos del SDK y del coordinador.
-3. Incorporar una cola persistente de tareas y memoria compartida.
-4. Crear agentes recolector y constructor con límites de seguridad.
-5. Añadir integración controlada con Minecraft Java Edition.
-6. Construir un dashboard mínimo y documentar el despliegue.
+1. Consolidar el monorepo y la documentación base.
+2. Terminar contratos del SDK y de tareas compartidas.
+3. Evolucionar la cola persistente y el manejo de progreso.
+4. Implementar los agentes recolector y constructor sobre límites seguros.
+5. Añadir adaptador de Minecraft en una fase controlada.
+6. Crear dashboard, métricas y despliegue reproducible.
 
-La planificación mediante LLM, la economía, las personalidades complejas y la
-búsqueda de imágenes quedan fuera del MVP inicial.
+Fuera del MVP inicial quedan la integración con LLM, la economía entre agentes, las personalidades complejas y la búsqueda de imágenes.
 
 ## Documentación
 
@@ -92,4 +121,4 @@ búsqueda de imágenes quedan fuera del MVP inicial.
 
 ## Licencia
 
-Este proyecto se distribuye bajo la [licencia MIT](LICENSE).
+Este proyecto se distribuye bajo la licencia MIT.

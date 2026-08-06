@@ -17,6 +17,7 @@ const requiredPaths = [
   "docs/vision.md",
   "docs/roadmap.md",
   "scripts",
+  "coordinator/Dockerfile",
 ];
 
 const expectedWorkspaces = [

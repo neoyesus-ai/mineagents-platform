@@ -1,4 +1,17 @@
 name: mineagents-platform
 
-# Los servicios se incorporarán cuando comience la implementación del MVP.
-services: {}
+services:
+  coordinator:
+    build:
+      context: .
+      dockerfile: coordinator/Dockerfile
+    environment:
+      COORDINATOR_PORT: "3000"
+      COORDINATOR_DB_PATH: /data/coordinator.sqlite
+    ports:
+      - "3000:3000"
+    volumes:
+      - coordinator-data:/data
+
+volumes:
+  coordinator-data: {}
