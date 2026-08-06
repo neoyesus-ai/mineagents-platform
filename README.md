@@ -11,7 +11,7 @@ La idea central es separar responsabilidades: un coordinator administra tareas y
 La visión es que varios agentes especializados colaboren sobre un mismo proyecto sin competir por el control del sistema.
 
 - El coordinator asigna y supervisa tareas.
-- El agent collector recopilará información o recursos.
+- El agent collector ejecuta recolecciones acotadas sobre posiciones autorizadas.
 - El agent builder ejecutará tareas de construcción.
 - El agent explorer inspeccionará zonas y contexto.
 - El SDK comparte contratos, parsers y reglas del ciclo de tareas.
@@ -83,6 +83,12 @@ El SDK es independiente de HTTP, SQLite y Minecraft. El coordinator lo consume c
 `@mineagents/minecraft-adapter` define una interfaz independiente del cliente real y un guardián que aplica regiones permitidas, límites de movimiento, listas de bloques y autorizaciones externas con caducidad y cuota. `createReadOnlyMinecraftPolicy` desactiva movimiento y escrituras por defecto.
 
 Todavía no existe un driver de Mineflayer ni conexión a un mundo. Las pruebas usan drivers simulados y no leen ni modifican datos de Minecraft.
+
+## Agente recolector
+
+`@mineagents/agent-collector` valida solicitudes con posiciones candidatas explícitas, inspecciona primero y sólo rompe coincidencias exactas mediante el adaptador seguro. Ante escasez no modifica nada, salvo que se solicite trabajo parcial de forma expresa.
+
+La cancelación y los fallos conservan el progreso realizado para evitar reintentos ciegos. El resultado representa bloques rotos, no materiales confirmados en inventario; tampoco hay todavía polling del coordinator ni conexión a Minecraft.
 
 ## Instalación
 

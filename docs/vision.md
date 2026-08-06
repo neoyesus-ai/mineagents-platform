@@ -26,6 +26,6 @@ La especialización debe permitir reemplazar o ampliar un agente sin rehacer el 
 
 ## Límites actuales
 
-La base actual incluye un coordinator funcional y un adaptador seguro simulable, pero todavía no hay Mineflayer, driver de Minecraft, dashboard real ni integración LLM. Tampoco existe lógica de construcción automática ni conexión a mundos de Minecraft.
+La base actual incluye un coordinator funcional, un adaptador seguro simulable y un recolector acotado. Todavía no hay Mineflayer, driver de Minecraft, dashboard real, integración LLM, construcción automática ni conexión a mundos de Minecraft.
 
 La economía, las personalidades complejas, la búsqueda de imágenes y la planificación autónoma mediante LLM permanecen fuera del MVP inicial.

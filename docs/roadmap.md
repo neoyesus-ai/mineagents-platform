@@ -30,7 +30,7 @@ El roadmap avanza por fases verificables. Completar una fase no habilita automá
 ## Fase 3 — Agentes del MVP
 
 - [x] Diseñar un adaptador seguro para Minecraft Java Edition.
-- [ ] Implementar el agente recolector.
+- [x] Implementar el agente recolector.
 - [ ] Implementar el agente constructor.
 - [ ] Definir y validar el formato de planos.
 - [ ] Probar en un mundo desechable dedicado.

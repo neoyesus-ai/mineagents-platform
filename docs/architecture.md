@@ -65,6 +65,14 @@ agents ──► SafeMinecraftAdapter ──► MinecraftDriver ──► Minecr
 
 La decisión de seguridad completa se documenta en [ADR 0002](decisions/0002-safe-minecraft-adapter.md).
 
+## Agente recolector
+
+`@mineagents/agent-collector` implementa una ejecución acotada y dirigida por posiciones candidatas. Valida que la autorización pertenezca a la tarea, inspecciona antes de escribir y sólo delega rupturas de bloques que coinciden exactamente con el recurso solicitado.
+
+La escasez no produce cambios por defecto; el trabajo parcial debe autorizarse expresamente. Las cancelaciones y errores conservan el progreso para permitir reintentos seguros. El módulo todavía no genera candidatos, consume la cola del coordinator ni confirma drops en inventario.
+
+La decisión y sus límites se documentan en [ADR 0003](decisions/0003-bounded-collector-agent.md).
+
 ## Organización del monorepo
 
 Cada workspace de producto tiene su propio `package.json`, `tsconfig.json` y punto de entrada bajo `src/`.
