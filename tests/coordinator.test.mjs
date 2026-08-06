@@ -32,7 +32,14 @@ const close = async (server) => {
 
 test("coordinator persists and serves the main task lifecycle", async (t) => {
   const tempDir = await mkdtemp(join(tmpdir(), "mineagents-coordinator-"));
-  const server = createCoordinatorServer({ dbPath: join(tempDir, "coordinator.sqlite") });
+  const logs = [];
+  const server = createCoordinatorServer({
+    dbPath: join(tempDir, "coordinator.sqlite"),
+    logger: {
+      info: (event, fields) => logs.push({ level: "info", event, ...fields }),
+      error: (event, fields) => logs.push({ level: "error", event, ...fields }),
+    },
+  });
   const port = await listen(server);
   const baseUrl = `http://127.0.0.1:${port}`;
 
@@ -43,6 +50,7 @@ test("coordinator persists and serves the main task lifecycle", async (t) => {
 
   const healthResponse = await globalThis.fetch(`${baseUrl}/health`);
   assert.equal(healthResponse.status, 200);
+  assert.match(healthResponse.headers.get("x-request-id"), /^[0-9a-f-]{36}$/);
   const health = await healthResponse.json();
   assert.equal(health.status, "ok");
 
@@ -116,6 +124,18 @@ test("coordinator persists and serves the main task lifecycle", async (t) => {
   const tasks = await tasksResponse.json();
   assert.equal(tasks.tasks.length, 1);
   assert.equal(tasks.tasks[0].status, "completed");
+
+  const metricsResponse = await globalThis.fetch(`${baseUrl}/metrics`);
+  assert.equal(metricsResponse.status, 200);
+  assert.match(metricsResponse.headers.get("content-type"), /text\/plain/);
+  const metrics = await metricsResponse.text();
+  assert.match(metrics, /mineagents_coordinator_tasks\{service="coordinator"} 1/);
+  assert.match(metrics, /route="\/tasks\/:id"/);
+  assert.doesNotMatch(metrics, new RegExp(claimedBody.task.id));
+  assert.equal(
+    logs.some((entry) => entry.event === "http.request" && entry.route === "/tasks/:id"),
+    true,
+  );
 });
 
 test("coordinator rejects invalid task payloads", async (t) => {

@@ -56,9 +56,14 @@ test("dashboard renders a read-only coordinator snapshot with escaped content", 
     projectId: project.id,
   });
 
+  const logs = [];
   const dashboard = createDashboardServer({
     coordinatorBaseUrl: coordinatorUrl,
     refreshSeconds: 15,
+    logger: {
+      info: (event, fields) => logs.push({ level: "info", event, ...fields }),
+      error: (event, fields) => logs.push({ level: "error", event, ...fields }),
+    },
   });
   const dashboardPort = await listen(dashboard);
   const dashboardUrl = `http://127.0.0.1:${dashboardPort}`;
@@ -89,6 +94,17 @@ test("dashboard renders a read-only coordinator snapshot with escaped content", 
   assert.doesNotMatch(page, /<script>alert/);
   assert.match(page, /Preparar &amp; validar/);
   assert.match(page, /content="15"/);
+
+  const metricsResponse = await globalThis.fetch(`${dashboardUrl}/metrics`);
+  assert.equal(metricsResponse.status, 200);
+  const metrics = await metricsResponse.text();
+  assert.match(metrics, /mineagents_http_requests_total/);
+  assert.match(metrics, /service="dashboard",method="GET",route="\/"/);
+  assert.doesNotMatch(metrics, /alert/);
+  assert.equal(
+    logs.some((entry) => entry.event === "http.request" && entry.route === "/"),
+    true,
+  );
 });
 
 test("dashboard fails closed when its data source is unavailable", async (t) => {

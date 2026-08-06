@@ -6,6 +6,7 @@ El dashboard mínimo ofrece una vista de sólo lectura del coordinator. No acced
 
 - `GET /`: panel HTML con métricas, tareas recientes y agentes.
 - `GET /health`: estado del proceso del dashboard.
+- `GET /metrics`: contadores y duración HTTP en formato Prometheus.
 - `GET /api/snapshot`: agregado JSON validado de las rutas públicas del coordinator.
 
 Todos los demás métodos se rechazan con `405`. Si el coordinator no responde o entrega datos incompatibles, el panel y el snapshot responden `502` sin reutilizar datos potencialmente obsoletos.

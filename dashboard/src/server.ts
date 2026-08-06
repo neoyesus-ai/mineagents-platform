@@ -1,4 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import {
+  HttpMetrics,
+  noopLogger,
+  type StructuredLogger,
+} from "@mineagents/observability";
 import { CoordinatorClient, type DashboardDataSource } from "./coordinator-client.js";
 import { renderDashboard, renderUnavailable } from "./view.js";
 
@@ -6,6 +12,8 @@ export interface DashboardServerOptions {
   coordinatorBaseUrl?: string;
   dataSource?: DashboardDataSource;
   refreshSeconds?: number;
+  logger?: StructuredLogger;
+  metrics?: HttpMetrics;
 }
 
 const securityHeaders = {
@@ -40,6 +48,22 @@ const sendHtml = (
   response.end(html);
 };
 
+const sendText = (
+  response: ServerResponse<IncomingMessage>,
+  statusCode: number,
+  contentType: string,
+  body: string,
+): void => {
+  response.writeHead(statusCode, {
+    ...securityHeaders,
+    "Content-Type": contentType,
+  });
+  response.end(body);
+};
+
+const normalizeDashboardRoute = (path: string): string =>
+  ["/", "/health", "/metrics", "/api/snapshot"].includes(path) ? path : "unmatched";
+
 export const createDashboardRequestHandler = (options: DashboardServerOptions) => {
   const refreshSeconds = options.refreshSeconds ?? 10;
   if (
@@ -57,10 +81,27 @@ export const createDashboardRequestHandler = (options: DashboardServerOptions) =
   if (!dataSource) {
     throw new TypeError("Dashboard requires a data source or coordinator base URL.");
   }
+  const logger = options.logger ?? noopLogger;
+  const metrics = options.metrics ?? new HttpMetrics({ service: "dashboard" });
 
   return async (request: IncomingMessage, response: ServerResponse<IncomingMessage>) => {
     const method = request.method ?? "GET";
     const url = new URL(request.url ?? "/", "http://localhost");
+    const route = normalizeDashboardRoute(url.pathname);
+    const requestId = randomUUID();
+    const startedAt = performance.now();
+    response.setHeader("X-Request-Id", requestId);
+    response.once("finish", () => {
+      const durationMs = performance.now() - startedAt;
+      metrics.observe({ method, route, statusCode: response.statusCode, durationMs });
+      logger.info("http.request", {
+        requestId,
+        method,
+        route,
+        statusCode: response.statusCode,
+        durationMs: Number(durationMs.toFixed(3)),
+      });
+    });
 
     if (method !== "GET") {
       response.setHeader("Allow", "GET");
@@ -77,10 +118,25 @@ export const createDashboardRequestHandler = (options: DashboardServerOptions) =
       return;
     }
 
+    if (url.pathname === "/metrics") {
+      sendText(
+        response,
+        200,
+        "text/plain; version=0.0.4; charset=utf-8",
+        metrics.render(),
+      );
+      return;
+    }
+
     if (url.pathname === "/api/snapshot") {
       try {
         sendJson(response, 200, await dataSource.getSnapshot());
-      } catch {
+      } catch (error) {
+        logger.error("coordinator.snapshot_failed", {
+          requestId,
+          route,
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        });
         sendJson(response, 502, {
           error: { code: "COORDINATOR_UNAVAILABLE", message: "Coordinator is unavailable." },
         });
@@ -91,7 +147,12 @@ export const createDashboardRequestHandler = (options: DashboardServerOptions) =
     if (url.pathname === "/") {
       try {
         sendHtml(response, 200, renderDashboard(await dataSource.getSnapshot(), refreshSeconds));
-      } catch {
+      } catch (error) {
+        logger.error("coordinator.snapshot_failed", {
+          requestId,
+          route,
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        });
         sendHtml(response, 502, renderUnavailable(refreshSeconds));
       }
       return;

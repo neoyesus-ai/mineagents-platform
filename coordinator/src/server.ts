@@ -1,4 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import {
+  HttpMetrics,
+  noopLogger,
+  type StructuredLogger,
+} from "@mineagents/observability";
 import {
   ContractValidationError,
   parseClaimTaskInput,
@@ -12,6 +18,8 @@ import { CoordinatorStore } from "./database.js";
 
 export interface CoordinatorServerOptions {
   dbPath: string;
+  logger?: StructuredLogger;
+  metrics?: HttpMetrics;
 }
 
 type JsonValue = Record<string, unknown> | unknown[] | string | number | boolean | null;
@@ -30,6 +38,36 @@ const sendJson = (
     ...headers,
   });
   response.end(JSON.stringify(payload));
+};
+
+const sendText = (
+  response: ServerResponse<IncomingMessage>,
+  statusCode: number,
+  contentType: string,
+  body: string,
+): void => {
+  response.writeHead(statusCode, {
+    "Content-Type": contentType,
+    "Cache-Control": "no-store",
+  });
+  response.end(body);
+};
+
+const normalizeCoordinatorRoute = (path: string): string => {
+  if (
+    [
+      "/health",
+      "/metrics",
+      "/agents",
+      "/agents/heartbeat",
+      "/tasks",
+      "/tasks/claim",
+      "/projects",
+    ].includes(path)
+  ) {
+    return path;
+  }
+  return /^\/tasks\/[^/]+$/.test(path) ? "/tasks/:id" : "unmatched";
 };
 
 const isJsonRequest = (request: IncomingMessage): boolean => {
@@ -77,12 +115,55 @@ const notFound = (response: ServerResponse<IncomingMessage>): void => {
 
 export const createCoordinatorRequestHandler = (options: CoordinatorServerOptions) => {
   const store = new CoordinatorStore(options.dbPath);
+  const logger = options.logger ?? noopLogger;
+  const metrics = options.metrics ?? new HttpMetrics({ service: "coordinator" });
 
   const handler = async (request: IncomingMessage, response: ServerResponse<IncomingMessage>) => {
     const method = request.method ?? "GET";
     const url = new URL(request.url ?? "/", "http://localhost");
+    const route = normalizeCoordinatorRoute(url.pathname);
+    const requestId = randomUUID();
+    const startedAt = performance.now();
+    response.setHeader("X-Request-Id", requestId);
+    response.once("finish", () => {
+      const durationMs = performance.now() - startedAt;
+      metrics.observe({ method, route, statusCode: response.statusCode, durationMs });
+      logger.info("http.request", {
+        requestId,
+        method,
+        route,
+        statusCode: response.statusCode,
+        durationMs: Number(durationMs.toFixed(3)),
+      });
+    });
 
     try {
+      if (method === "GET" && url.pathname === "/metrics") {
+        sendText(
+          response,
+          200,
+          "text/plain; version=0.0.4; charset=utf-8",
+          metrics.render([
+            {
+              name: "mineagents_coordinator_agents",
+              help: "Agents registered by the coordinator.",
+              value: store.listAgents().length,
+            },
+            {
+              name: "mineagents_coordinator_tasks",
+              help: "Tasks stored by the coordinator.",
+              value: store.listTasks().length,
+            },
+            {
+              name: "mineagents_coordinator_projects",
+              help: "Projects stored by the coordinator.",
+              value: store.listProjects().length,
+            },
+          ]),
+        );
+        return;
+      }
+
       if (method === "GET" && url.pathname === "/health") {
         sendJson(response, 200, {
           status: "ok",
@@ -181,17 +262,20 @@ export const createCoordinatorRequestHandler = (options: CoordinatorServerOption
         return;
       }
 
-      const message = error instanceof Error ? error.message : "Unknown error.";
+      logger.error("http.unhandled_error", {
+        requestId,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+      });
       sendJson(response, 500, {
         error: {
           code: "INTERNAL_SERVER_ERROR",
-          message,
+          message: "Unexpected coordinator error.",
         },
       });
     }
   };
 
-  return { handler, store };
+  return { handler, store, metrics };
 };
 
 export const createCoordinatorServer = (options: CoordinatorServerOptions): Server => {

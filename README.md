@@ -4,7 +4,7 @@ MineAgents Platform es una plataforma modular para coordinar agentes autónomos 
 
 ## Qué es
 
-La idea central es separar responsabilidades: un coordinator administra tareas y proyectos, los agentes ejecutan trabajo especializado, el planner organizará estrategias de alto nivel, memory conservará contexto, y dashboard muestra el estado operativo. La base actual incluye el coordinator persistente, contratos compartidos, acceso seguro simulable a Minecraft, agentes acotados, blueprints validados y un dashboard de sólo lectura; planner y memory siguen siendo base arquitectónica.
+La idea central es separar responsabilidades: un coordinator administra tareas y proyectos, los agentes ejecutan trabajo especializado, el planner organizará estrategias de alto nivel, memory conservará contexto, y dashboard muestra el estado operativo. La base actual incluye el coordinator persistente, contratos compartidos, observabilidad HTTP, acceso seguro simulable a Minecraft, agentes acotados, blueprints validados y un dashboard de sólo lectura; planner y memory siguen siendo base arquitectónica.
 
 ## Visión multiagente
 
@@ -24,6 +24,7 @@ La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. 
 
 - `coordinator/`: API REST, agentes, proyectos, tareas y persistencia SQLite.
 - `sdk/`: contratos públicos y utilidades compartidas para agentes.
+- `observability/`: logs JSON y métricas HTTP compartidas.
 - `minecraft-adapter/`: acceso seguro y simulable a capacidades de Minecraft.
 - `agents/collector/`: agente recolector.
 - `agents/builder/`: agente constructor.
@@ -42,6 +43,7 @@ La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. 
 El servicio `coordinator` expone una API mínima sobre SQLite con estas rutas:
 
 - `GET /health`
+- `GET /metrics`
 - `GET /agents`
 - `POST /agents/heartbeat`
 - `GET /tasks`
@@ -107,7 +109,13 @@ El resultado conserva las posiciones colocadas ante cancelaciones o fallos. El b
 
 `@mineagents/dashboard` consulta únicamente `GET /health`, `/agents`, `/tasks` y `/projects` del coordinator. Renderiza métricas, tareas recientes y agentes registrados en HTML sin JavaScript cliente, valida las respuestas del servicio y escapa todo contenido dinámico.
 
-El dashboard publica `GET /`, `GET /health` y `GET /api/snapshot`. Cualquier método distinto de `GET` se rechaza, y una caída del coordinator produce una respuesta controlada sin mostrar datos obsoletos. La configuración y operación se documentan en [docs/dashboard.md](docs/dashboard.md).
+El dashboard publica `GET /`, `GET /health`, `GET /metrics` y `GET /api/snapshot`. Cualquier método distinto de `GET` se rechaza, y una caída del coordinator produce una respuesta controlada sin mostrar datos obsoletos. La configuración y operación se documentan en [docs/dashboard.md](docs/dashboard.md).
+
+## Observabilidad
+
+Coordinator y dashboard exponen métricas Prometheus en `GET /metrics` y generan un `X-Request-Id` por respuesta. Los procesos iniciados mediante sus CLI escriben un registro JSON por request con servicio, evento, método, ruta normalizada, estado y duración.
+
+Las métricas no usan URLs ni IDs dinámicos como etiquetas. Tampoco se registran cuerpos, parámetros de consulta, autorizaciones o contenido de tareas. El contrato completo está en [docs/observability.md](docs/observability.md).
 
 ## Instalación
 
@@ -175,6 +183,7 @@ Fuera del MVP inicial quedan la integración con LLM, la economía entre agentes
 
 - [Arquitectura](docs/architecture.md)
 - [Dashboard](docs/dashboard.md)
+- [Observabilidad](docs/observability.md)
 - [Visión](docs/vision.md)
 - [Roadmap](docs/roadmap.md)
 

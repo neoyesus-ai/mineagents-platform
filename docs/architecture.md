@@ -2,7 +2,7 @@
 
 ## Estado actual
 
-MineAgents Platform es un monorepositorio TypeScript con npm workspaces. La base incluye un `coordinator` funcional con API REST mínima y persistencia en SQLite, un dashboard operativo de sólo lectura, un SDK con contratos públicos, un adaptador seguro y simulable para Minecraft y un formato validado de blueprints. Todavía no existe un driver real, conexión a un mundo ni lógica de agentes LLM.
+MineAgents Platform es un monorepositorio TypeScript con npm workspaces. La base incluye un `coordinator` funcional con API REST mínima y persistencia en SQLite, un dashboard operativo de sólo lectura, observabilidad HTTP compartida, un SDK con contratos públicos, un adaptador seguro y simulable para Minecraft y un formato validado de blueprints. Todavía no existe un driver real, conexión a un mundo ni lógica de agentes LLM.
 
 ## Mapa de componentes
 
@@ -33,6 +33,7 @@ El coordinator actúa como núcleo de orquestación y persistencia. En esta vers
 La API REST expuesta es mínima y sin framework:
 
 - `GET /health`
+- `GET /metrics`
 - `GET /agents`
 - `POST /agents/heartbeat`
 - `GET /tasks`
@@ -101,12 +102,21 @@ Las respuestas externas se validan antes de renderizarse, el contenido dinámico
 
 La operación se documenta en [Dashboard](dashboard.md) y la separación de lectura en [ADR 0006](decisions/0006-read-only-dashboard.md).
 
+## Observabilidad HTTP
+
+`@mineagents/observability` contiene utilidades independientes de los dominios para emitir logs JSON y métricas Prometheus. Coordinator y dashboard resuelven sus propias rutas acotadas antes de observar una respuesta, evitando que IDs, queries o paths arbitrarios generen etiquetas de alta cardinalidad.
+
+Cada servicio expone `/metrics`, añade un request ID a la respuesta y registra solicitudes terminadas. El logger es inyectable para pruebas y silencioso cuando los servidores se usan como bibliotecas; los CLI habilitan la salida JSON a stdout.
+
+El contrato operativo se documenta en [Observabilidad](observability.md) y la decisión de cardinalidad en [ADR 0007](decisions/0007-bounded-http-observability.md).
+
 ## Organización del monorepo
 
 Cada workspace de producto tiene su propio `package.json`, `tsconfig.json` y punto de entrada bajo `src/`.
 
 - `coordinator/` contiene la API HTTP, validación de entrada, errores y persistencia.
 - `sdk/` contiene la capa pública de contratos y validación compartida.
+- `observability/` contiene logging JSON y métricas HTTP sin dependencias de dominio.
 - `minecraft-adapter/` contiene el límite seguro y simulable de acceso al mundo.
 - `agents/` separa implementaciones por rol.
 - `dashboard/` contiene el cliente HTTP, la vista y su servidor de sólo lectura.

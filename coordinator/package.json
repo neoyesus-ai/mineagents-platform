@@ -9,11 +9,12 @@
     "dist"
   ],
   "dependencies": {
+    "@mineagents/observability": "0.1.0",
     "@mineagents/sdk": "0.1.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "start": "node dist/cli.js"
+    "start": "node --no-warnings dist/cli.js"
   }
 }

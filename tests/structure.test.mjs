@@ -5,6 +5,7 @@ import { test } from "node:test";
 const requiredPaths = [
   "coordinator",
   "sdk",
+  "observability",
   "minecraft-adapter",
   "agents/collector",
   "agents/builder",
@@ -14,8 +15,10 @@ const requiredPaths = [
   "memory",
   "dashboard",
   "blueprints",
+  "observability/package.json",
   "docs/architecture.md",
   "docs/dashboard.md",
+  "docs/observability.md",
   "docs/vision.md",
   "docs/roadmap.md",
   "scripts",
@@ -25,6 +28,7 @@ const requiredPaths = [
 
 const expectedWorkspaces = [
   "sdk",
+  "observability",
   "minecraft-adapter",
   "coordinator",
   "agents/*",
