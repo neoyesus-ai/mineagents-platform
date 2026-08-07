@@ -1,6 +1,6 @@
 # ADR 0006 — Dashboard de sólo lectura
 
-- Estado: aceptada
+- Estado: reemplazada por ADR 0012
 - Fecha: 2026-08-06
 
 ## Contexto
@@ -24,3 +24,5 @@ La operación necesita visibilidad básica sobre proyectos, tareas y agentes. El
 - La primera versión funciona sin framework web ni pipeline de frontend.
 - La recarga completa periódica prima simplicidad y trazabilidad sobre tiempo real.
 - Autenticación, paginación, streaming y controles operativos requieren decisiones posteriores.
+
+ADR 0012 conserva la separación del servicio y la validación de límites, pero añade acciones operativas acotadas.

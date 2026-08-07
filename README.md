@@ -4,7 +4,7 @@ MineAgents Platform es una plataforma modular para coordinar agentes autónomos 
 
 ## Qué es
 
-La idea central es separar responsabilidades: un coordinator administra tareas y proyectos, los agentes ejecutan trabajo especializado, el planner organizará estrategias de alto nivel, memory conservará contexto, y dashboard muestra el estado operativo. La base actual incluye el coordinator persistente, contratos compartidos, observabilidad HTTP, acceso seguro simulable a Minecraft, agentes acotados, blueprints validados y un dashboard de sólo lectura; planner y memory siguen siendo base arquitectónica.
+La idea central es separar responsabilidades: un coordinator administra tareas y proyectos, los agentes ejecutan trabajo especializado, el planner organizará estrategias de alto nivel, memory conservará contexto, y dashboard muestra el estado operativo. La base actual incluye el coordinator persistente, contratos compartidos, observabilidad HTTP, acceso seguro simulable a Minecraft, agentes acotados, blueprints validados y un dashboard con acciones operativas supervisadas; planner y memory siguen siendo base arquitectónica.
 
 ## Visión multiagente
 
@@ -15,7 +15,7 @@ La visión es que varios agentes especializados colaboren sobre un mismo proyect
 - El agent builder ejecuta colocaciones explícitas sin reemplazar bloques existentes.
 - El agent explorer inspeccionará zonas y contexto.
 - El SDK comparte contratos, parsers y reglas del ciclo de tareas.
-- El dashboard presenta el estado público del coordinator sin exponer escrituras.
+- El dashboard presenta el estado público y permite crear proyectos y tareas o cancelar trabajo mediante la API del coordinator.
 - Blueprints ya valida y compila planos; planner y memory aportarán planificación y memoria sin mezclar responsabilidades.
 
 La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. Docker Compose incluye un servidor Vanilla 1.21.11 con un mundo desechable separado y un observador Mineflayer que no recibe órdenes. El driver admite movimiento y escrituras acotadas, aunque las escrituras reales todavía no se han habilitado ni validado sobre el servidor.
@@ -33,7 +33,7 @@ La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. 
 - `agents/common/`: piezas compartidas entre agentes.
 - `planner/`: planificación de alto nivel.
 - `memory/`: persistencia y memoria compartida.
-- `dashboard/`: panel operativo de sólo lectura.
+- `dashboard/`: panel operativo con acciones supervisadas.
 - `blueprints/`: formato versionado, validación y compilación de planos.
 - `docs/`: visión, arquitectura y roadmap.
 - `scripts/`: automatizaciones del monorepo.
@@ -110,9 +110,9 @@ El resultado conserva las posiciones colocadas ante cancelaciones o fallos. El b
 
 ## Dashboard mínimo
 
-`@mineagents/dashboard` consulta únicamente `GET /health`, `/agents`, `/tasks` y `/projects` del coordinator. Renderiza métricas, tareas recientes y agentes registrados en HTML sin JavaScript cliente, valida las respuestas del servicio y escapa todo contenido dinámico.
+`@mineagents/dashboard` agrega las lecturas de `/health`, `/agents`, `/tasks` y `/projects` del coordinator. Renderiza métricas, formularios operativos, filtros combinables, tareas recientes y agentes registrados en HTML sin JavaScript cliente, valida las respuestas del servicio y escapa todo contenido dinámico.
 
-El dashboard publica `GET /`, `GET /health`, `GET /metrics` y `GET /api/snapshot`. Cualquier método distinto de `GET` se rechaza, y una caída del coordinator produce una respuesta controlada sin mostrar datos obsoletos. La configuración y operación se documentan en [docs/dashboard.md](docs/dashboard.md).
+Además de sus rutas `GET`, acepta acciones `POST` del mismo origen para crear proyectos, crear tareas pendientes y cancelar tareas activas. Todas las escrituras atraviesan la API pública del coordinator; una caída produce una respuesta controlada y nunca se reintenta una mutación automáticamente. La configuración y operación se documentan en [docs/dashboard.md](docs/dashboard.md).
 
 ## Observabilidad
 
@@ -163,7 +163,7 @@ npm run typecheck
 
 ## Docker Compose
 
-`docker-compose.yml` integra el coordinator, su volumen SQLite, el dashboard de sólo lectura y un servidor Minecraft Java Edition 1.21.11 para desarrollo. El servidor crea un mundo independiente llamado `mineagents-demo`; no monta ni modifica mundos existentes.
+`docker-compose.yml` integra el coordinator, su volumen SQLite, el dashboard operativo y un servidor Minecraft Java Edition 1.21.11 para desarrollo. El servidor crea un mundo independiente llamado `mineagents-demo`; no monta ni modifica mundos existentes.
 
 ```bash
 docker compose up --build

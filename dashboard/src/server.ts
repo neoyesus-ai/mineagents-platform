@@ -5,7 +5,14 @@ import {
   noopLogger,
   type StructuredLogger,
 } from "@mineagents/observability";
+import { executeDashboardAction, matchDashboardAction } from "./actions.js";
 import { CoordinatorClient, type DashboardDataSource } from "./coordinator-client.js";
+import {
+  DashboardActionsUnavailableError,
+  DashboardInputError,
+  DashboardUpstreamError,
+} from "./errors.js";
+import { parseDashboardTaskFilters } from "./filters.js";
 import { renderDashboard, renderUnavailable } from "./view.js";
 
 export interface DashboardServerOptions {
@@ -18,7 +25,7 @@ export interface DashboardServerOptions {
 
 const securityHeaders = {
   "Cache-Control": "no-store",
-  "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+  "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
   "Referrer-Policy": "no-referrer",
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
@@ -61,8 +68,27 @@ const sendText = (
   response.end(body);
 };
 
-const normalizeDashboardRoute = (path: string): string =>
-  ["/", "/health", "/metrics", "/api/snapshot"].includes(path) ? path : "unmatched";
+const sendRedirect = (
+  response: ServerResponse<IncomingMessage>,
+  location: string,
+): void => {
+  response.writeHead(303, {
+    ...securityHeaders,
+    Location: location,
+  });
+  response.end();
+};
+
+const normalizeDashboardRoute = (path: string): string => {
+  if (
+    ["/", "/health", "/metrics", "/api/snapshot", "/actions/projects", "/actions/tasks"].includes(path)
+  ) {
+    return path;
+  }
+  return /^\/actions\/tasks\/[^/]+\/cancel$/.test(path)
+    ? "/actions/tasks/:id/cancel"
+    : "unmatched";
+};
 
 export const createDashboardRequestHandler = (options: DashboardServerOptions) => {
   const refreshSeconds = options.refreshSeconds ?? 10;
@@ -103,9 +129,67 @@ export const createDashboardRequestHandler = (options: DashboardServerOptions) =
       });
     });
 
+    let action;
+    try {
+      action = matchDashboardAction(url.pathname);
+    } catch (error) {
+      if (error instanceof DashboardInputError) {
+        sendJson(response, 400, {
+          error: { code: error.code, message: "Dashboard action request is invalid." },
+        });
+        return;
+      }
+      throw error;
+    }
+
+    if (action && method !== "POST") {
+      response.setHeader("Allow", "POST");
+      sendJson(response, 405, {
+        error: { code: "METHOD_NOT_ALLOWED", message: "Only POST is supported." },
+      });
+      return;
+    }
+
+    if (method === "POST" && action) {
+      try {
+        const notice = await executeDashboardAction(action, request, dataSource);
+        logger.info("dashboard.action_succeeded", { requestId, action: action.kind });
+        sendRedirect(response, `/?notice=${notice}`);
+      } catch (error) {
+        if (error instanceof DashboardInputError) {
+          logger.info("dashboard.action_rejected", {
+            requestId,
+            action: action.kind,
+            errorCode: error.code,
+          });
+          sendJson(response, 400, {
+            error: { code: error.code, message: "Dashboard action request is invalid." },
+          });
+          return;
+        }
+        if (error instanceof DashboardActionsUnavailableError) {
+          sendJson(response, 503, {
+            error: { code: error.code, message: "Dashboard actions are unavailable." },
+          });
+          return;
+        }
+        logger.error("dashboard.action_failed", {
+          requestId,
+          action: action.kind,
+          errorName: error instanceof Error ? error.name : "UnknownError",
+          upstream: error instanceof DashboardUpstreamError,
+        });
+        sendRedirect(response, "/?error=action-failed");
+      }
+      return;
+    }
+
     if (method !== "GET") {
-      response.setHeader("Allow", "GET");
-      sendJson(response, 405, { error: { code: "METHOD_NOT_ALLOWED", message: "Only GET is supported." } });
+      const allowedMethod = action ? "POST" : "GET";
+      response.setHeader("Allow", allowedMethod);
+      sendJson(response, 405, {
+        error: { code: "METHOD_NOT_ALLOWED", message: `Only ${allowedMethod} is supported.` },
+      });
       return;
     }
 
@@ -146,7 +230,15 @@ export const createDashboardRequestHandler = (options: DashboardServerOptions) =
 
     if (url.pathname === "/") {
       try {
-        sendHtml(response, 200, renderDashboard(await dataSource.getSnapshot(), refreshSeconds));
+        sendHtml(
+          response,
+          200,
+          renderDashboard(await dataSource.getSnapshot(), refreshSeconds, {
+            notice: url.searchParams.get("notice"),
+            error: url.searchParams.get("error"),
+            filters: parseDashboardTaskFilters(url.searchParams),
+          }),
+        );
       } catch (error) {
         logger.error("coordinator.snapshot_failed", {
           requestId,

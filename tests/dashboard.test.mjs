@@ -37,7 +37,7 @@ const postJson = async (url, payload) => {
   return response.json();
 };
 
-test("dashboard renders a read-only coordinator snapshot with escaped content", async (t) => {
+test("dashboard renders an operational coordinator snapshot with escaped content", async (t) => {
   const tempDir = await mkdtemp(join(tmpdir(), "mineagents-dashboard-"));
   const coordinator = createCoordinatorServer({ dbPath: join(tempDir, "coordinator.sqlite") });
   const coordinatorPort = await listen(coordinator);
@@ -90,10 +90,40 @@ test("dashboard renders a read-only coordinator snapshot with escaped content", 
   const page = await pageResponse.text();
   assert.equal(pageResponse.status, 200);
   assert.match(pageResponse.headers.get("content-security-policy"), /default-src 'none'/);
+  assert.match(pageResponse.headers.get("content-security-policy"), /form-action 'self'/);
   assert.match(page, /&lt;script&gt;alert\(&quot;mine&quot;\)&lt;\/script&gt;/);
   assert.doesNotMatch(page, /<script>alert/);
   assert.match(page, /Preparar &amp; validar/);
+  assert.match(page, /action="\/actions\/tasks"/);
+  assert.match(page, /Crear proyecto/);
   assert.match(page, /content="15"/);
+
+  const filteredParams = new globalThis.URLSearchParams({
+    q: "sin coincidencia",
+    status: "pending",
+    projectId: project.id,
+  });
+  const filteredResponse = await globalThis.fetch(
+    dashboardUrl + "/?" + filteredParams.toString(),
+  );
+  const filteredPage = await filteredResponse.text();
+  assert.equal(filteredResponse.status, 200);
+  assert.match(filteredPage, /value="sin coincidencia"/);
+  assert.match(filteredPage, /value="pending" selected/);
+  assert.match(
+    filteredPage,
+    new RegExp(`value="${project.id}" selected`),
+  );
+  assert.match(filteredPage, /No hay tareas que coincidan/);
+  assert.doesNotMatch(filteredPage, /Preparar &amp; validar/);
+
+  const unsafeFilter = new globalThis.URLSearchParams({ q: "<img src=x>" });
+  const unsafeFilterResponse = await globalThis.fetch(
+    dashboardUrl + "/?" + unsafeFilter.toString(),
+  );
+  const unsafeFilterPage = await unsafeFilterResponse.text();
+  assert.match(unsafeFilterPage, /value="&lt;img src=x&gt;"/);
+  assert.doesNotMatch(unsafeFilterPage, /<img src=x>/);
 
   const metricsResponse = await globalThis.fetch(`${dashboardUrl}/metrics`);
   assert.equal(metricsResponse.status, 200);

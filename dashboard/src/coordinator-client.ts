@@ -2,7 +2,9 @@ import {
   isAgentStatus,
   isTaskStatus,
   type AgentRecord,
+  type ProjectInput,
   type ProjectRecord,
+  type TaskCreateInput,
   type TaskRecord,
 } from "@mineagents/sdk";
 import { normalizeCoordinatorBaseUrl } from "./config.js";
@@ -20,6 +22,9 @@ export interface CoordinatorClientOptions {
 
 export interface DashboardDataSource {
   getSnapshot(): Promise<DashboardSnapshot>;
+  createProject?(input: ProjectInput): Promise<ProjectRecord>;
+  createTask?(input: TaskCreateInput): Promise<TaskRecord>;
+  cancelTask?(taskId: string): Promise<TaskRecord>;
 }
 
 const asRecord = (value: unknown, label: string): JsonRecord => {
@@ -120,6 +125,18 @@ const parseTask = (value: unknown, index: number): TaskRecord => {
   };
 };
 
+const parseEntityResponse = <T>(
+  value: unknown,
+  key: string,
+  parser: (item: unknown, index: number) => T,
+): T => {
+  const response = asRecord(value, `${key} response`);
+  if (!(key in response)) {
+    throw new DashboardUpstreamError(`Coordinator returned an invalid ${key} response.`);
+  }
+  return parser(response[key], 0);
+};
+
 const parseList = <T>(
   value: unknown,
   key: string,
@@ -170,10 +187,40 @@ export class CoordinatorClient implements DashboardDataSource {
     };
   }
 
-  private async fetchJson(path: string): Promise<unknown> {
+  async createProject(input: ProjectInput): Promise<ProjectRecord> {
+    const value = await this.fetchJson("/projects", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    return parseEntityResponse(value, "project", parseProject);
+  }
+
+  async createTask(input: TaskCreateInput): Promise<TaskRecord> {
+    const value = await this.fetchJson("/tasks", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    return parseEntityResponse(value, "task", parseTask);
+  }
+
+  async cancelTask(taskId: string): Promise<TaskRecord> {
+    const value = await this.fetchJson(`/tasks/${encodeURIComponent(taskId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "cancelled" }),
+    });
+    return parseEntityResponse(value, "task", parseTask);
+  }
+
+  private async fetchJson(path: string, init: RequestInit = {}): Promise<unknown> {
     try {
+      const headers = new Headers(init.headers);
+      headers.set("accept", "application/json");
+      if (init.body !== undefined) {
+        headers.set("content-type", "application/json");
+      }
       const response = await this.fetch(`${this.baseUrl}${path}`, {
-        headers: { accept: "application/json" },
+        ...init,
+        headers,
         signal: AbortSignal.timeout(this.timeoutMs),
       });
       if (!response.ok) {

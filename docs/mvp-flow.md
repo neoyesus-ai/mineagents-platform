@@ -8,7 +8,7 @@ La prueba `tests/mvp-flow.test.mjs` conecta los componentes implementados sin ac
 coordinator HTTP
   ├─ claim collector ─► SafeMinecraftAdapter ─► mundo en memoria
   ├─ claim builder ───► blueprint compiler ───► SafeMinecraftAdapter
-  └─ SQLite ──────────► dashboard read-only
+  └─ API pública ─────► dashboard snapshot
 ```
 
 El escenario ejecuta este flujo:

@@ -1,8 +1,28 @@
 import type { AgentRecord, ProjectRecord, TaskRecord, TaskStatus } from "@mineagents/sdk";
 import type { DashboardSnapshot } from "./contracts.js";
+import {
+  filterDashboardTasks,
+  hasDashboardTaskFilters,
+  type DashboardTaskFilters,
+} from "./filters.js";
 
 const visibleTaskLimit = 50;
 const visibleAgentLimit = 12;
+
+export interface DashboardFeedback {
+  notice?: string | null;
+  error?: string | null;
+}
+
+export interface DashboardViewOptions extends DashboardFeedback {
+  filters?: DashboardTaskFilters;
+}
+
+const notices: Readonly<Record<string, string>> = {
+  "project-created": "Proyecto creado correctamente.",
+  "task-created": "Tarea creada y añadida a la cola.",
+  "task-cancelled": "Tarea cancelada correctamente.",
+};
 
 const statusLabels: Readonly<Record<TaskStatus, string>> = {
   pending: "Pendiente",
@@ -36,6 +56,75 @@ const renderMetric = (label: string, value: number, note: string): string => `
     <small>${escapeHtml(note)}</small>
   </article>`;
 
+const renderFeedback = (feedback: DashboardFeedback): string => {
+  const notice = feedback.notice ? notices[feedback.notice] : undefined;
+  if (notice) {
+    return `<p class="feedback feedback-success" role="status">${escapeHtml(notice)}</p>`;
+  }
+  if (feedback.error === "action-failed") {
+    return '<p class="feedback feedback-error" role="alert">No se pudo completar la acción. Revisa el estado del coordinator e inténtalo de nuevo.</p>';
+  }
+  return "";
+};
+
+const renderControls = (projects: readonly ProjectRecord[]): string => {
+  const projectOptions = projects
+    .map((project) => `<option value="${escapeHtml(project.id)}">${escapeHtml(project.name)}</option>`)
+    .join("");
+
+  return `
+    <section class="controls" aria-label="Acciones">
+      <article class="panel action-panel">
+        <div class="panel-head"><h2>Nueva tarea</h2><p>Se añade como pendiente</p></div>
+        <form method="post" action="/actions/tasks">
+          <label>Título<input name="title" required maxlength="200" placeholder="Ej. Recolectar 32 bloques de piedra"></label>
+          <label>Descripción<textarea name="description" maxlength="4000" rows="3" placeholder="Objetivo y límites de la tarea"></textarea></label>
+          <label>Proyecto<select name="projectId"><option value="">Sin proyecto</option>${projectOptions}</select></label>
+          <button type="submit">Crear tarea</button>
+        </form>
+      </article>
+      <article class="panel action-panel">
+        <div class="panel-head"><h2>Nuevo proyecto</h2><p>Agrupa tareas relacionadas</p></div>
+        <form method="post" action="/actions/projects">
+          <label>Nombre<input name="name" required maxlength="120" placeholder="Ej. Base del poblado"></label>
+          <label>Descripción<textarea name="description" maxlength="2000" rows="3" placeholder="Alcance del proyecto"></textarea></label>
+          <button type="submit">Crear proyecto</button>
+        </form>
+      </article>
+    </section>`;
+};
+
+const selectedAttribute = (selected: boolean): string => (selected ? " selected" : "");
+
+const renderTaskFilters = (
+  projects: readonly ProjectRecord[],
+  filters: DashboardTaskFilters,
+): string => {
+  const statusOptions = Object.entries(statusLabels)
+    .map(
+      ([status, label]) =>
+        `<option value="${status}"${selectedAttribute(filters.status === status)}>${escapeHtml(label)}</option>`,
+    )
+    .join("");
+  const projectOptions = projects
+    .map(
+      (project) =>
+        `<option value="${escapeHtml(project.id)}"${selectedAttribute(filters.projectId === project.id)}>${escapeHtml(project.name)}</option>`,
+    )
+    .join("");
+
+  return `
+    <section class="panel filter-panel" aria-label="Filtros de tareas">
+      <div class="panel-head"><h2>Filtrar tareas</h2><p>La URL conserva la selección</p></div>
+      <form class="task-filters" method="get" action="/">
+        <label>Buscar<input type="search" name="q" maxlength="80" value="${escapeHtml(filters.query ?? "")}" placeholder="Título o descripción"></label>
+        <label>Estado<select name="status"><option value="">Todos</option>${statusOptions}</select></label>
+        <label>Proyecto<select name="projectId"><option value="">Todos</option>${projectOptions}</select></label>
+        <div class="filter-actions"><button type="submit">Aplicar filtros</button><a class="button-secondary" href="/">Limpiar</a></div>
+      </form>
+    </section>`;
+};
+
 const renderTask = (
   task: TaskRecord,
   projects: ReadonlyMap<string, ProjectRecord>,
@@ -53,6 +142,11 @@ const renderTask = (
       <td>${escapeHtml(project?.name ?? "Sin proyecto")}</td>
       <td>${escapeHtml(agent?.name ?? "Sin asignar")}</td>
       <td><time datetime="${escapeHtml(task.updatedAt)}">${displayDate(task.updatedAt)}</time></td>
+      <td class="task-action">
+        ${task.status === "pending" || task.status === "assigned" || task.status === "running"
+          ? `<form method="post" action="/actions/tasks/${encodeURIComponent(task.id)}/cancel"><button class="button-danger" type="submit">Cancelar</button></form>`
+          : '<span class="muted">—</span>'}
+      </td>
     </tr>`;
 };
 
@@ -79,6 +173,21 @@ const styles = `
   .metric,.panel { border:1px solid var(--line); background:linear-gradient(145deg,var(--panel-2),var(--panel)); box-shadow:0 18px 50px #0004; }
   .metric { padding:18px; border-radius:12px; } .metric span,.metric small { display:block; color:var(--muted); }
   .metric strong { display:block; margin:6px 0 2px; font-size:2rem; }
+  .feedback { margin:0 0 20px; padding:12px 16px; border:1px solid currentColor; border-radius:10px; }
+  .feedback-success { color:var(--green); background:#17321e; } .feedback-error { color:var(--red); background:#351a1a; }
+  .controls { display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:28px; }
+  .action-panel form { display:grid; gap:13px; padding:20px; }
+  label { display:grid; gap:5px; color:var(--muted); font-size:.82rem; font-weight:700; }
+  input,textarea,select { width:100%; border:1px solid var(--line); border-radius:8px; background:#0d1510; color:var(--text); padding:10px 12px; font:inherit; }
+  textarea { resize:vertical; } input:focus,textarea:focus,select:focus { outline:2px solid var(--green); outline-offset:1px; }
+  button { justify-self:start; border:0; border-radius:8px; background:var(--green); color:#081109; padding:9px 14px; font:inherit; font-weight:800; cursor:pointer; }
+  button:hover { filter:brightness(1.08); } .button-danger { border:1px solid var(--red); background:transparent; color:var(--red); padding:5px 9px; font-size:.78rem; }
+  .task-action form { margin:0; } .muted { color:var(--muted); }
+  .filter-panel { margin-bottom:16px; }
+  .task-filters { display:grid; grid-template-columns:2fr 1fr 1fr; gap:13px; padding:18px 20px; }
+  .filter-actions { display:flex; align-items:center; gap:10px; grid-column:1/-1; }
+  .button-secondary { display:inline-block; border:1px solid var(--line); border-radius:8px; color:var(--text); padding:8px 14px; font-weight:800; text-decoration:none; }
+  .button-secondary:hover { border-color:var(--green); }
   .layout { display:grid; grid-template-columns:minmax(0,3fr) minmax(250px,1fr); gap:16px; align-items:start; }
   .panel { border-radius:14px; overflow:hidden; } .panel-head { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:18px 20px; border-bottom:1px solid var(--line); }
   .panel-head h2,.panel-head p { margin:0; } .panel-head p { color:var(--muted); font-size:.85rem; }
@@ -93,19 +202,30 @@ const styles = `
   .agent-state { width:10px; height:10px; border-radius:50%; background:var(--red); box-shadow:0 0 12px currentColor; flex:0 0 auto; }
   .agent-state-online { background:var(--green); } .empty { padding:36px 20px; color:var(--muted); text-align:center; }
   footer { margin-top:18px; color:var(--muted); font-size:.82rem; }
-  @media (max-width:850px) { .metrics { grid-template-columns:repeat(2,1fr); } .layout { grid-template-columns:1fr; } }
-  @media (max-width:560px) { header { align-items:flex-start; flex-direction:column; } .stamp { text-align:left; } .metrics { grid-template-columns:1fr; } main { width:min(100% - 20px,1180px); padding-top:24px; } }
+  @media (max-width:850px) { .metrics { grid-template-columns:repeat(2,1fr); } .controls,.layout { grid-template-columns:1fr; } }
+  @media (max-width:560px) { header { align-items:flex-start; flex-direction:column; } .stamp { text-align:left; } .metrics,.task-filters { grid-template-columns:1fr; } main { width:min(100% - 20px,1180px); padding-top:24px; } }
 `;
 
-export const renderDashboard = (snapshot: DashboardSnapshot, refreshSeconds: number): string => {
+export const renderDashboard = (
+  snapshot: DashboardSnapshot,
+  refreshSeconds: number,
+  options: DashboardViewOptions = {},
+): string => {
   const projects = new Map(snapshot.projects.map((project) => [project.id, project]));
   const agents = new Map(snapshot.agents.map((agent) => [agent.id, agent]));
-  const visibleTasks = snapshot.tasks.slice(0, visibleTaskLimit);
+  const filters = options.filters ?? {};
+  const filteredTasks = filterDashboardTasks(snapshot.tasks, filters);
+  const filtersActive = hasDashboardTaskFilters(filters);
+  const visibleTasks = filteredTasks.slice(0, visibleTaskLimit);
   const visibleAgents = snapshot.agents.slice(0, visibleAgentLimit);
   const activeTasks = snapshot.taskCounts.pending + snapshot.taskCounts.assigned + snapshot.taskCounts.running;
   const onlineAgents = snapshot.agents.filter((agent) => agent.status === "online").length;
   const taskRows = visibleTasks.map((task) => renderTask(task, projects, agents)).join("");
   const agentRows = visibleAgents.map(renderAgent).join("");
+  const taskCountLabel = filtersActive
+    ? `Mostrando ${visibleTasks.length} de ${filteredTasks.length} coincidencias`
+    : `Mostrando ${visibleTasks.length} de ${snapshot.tasks.length}`;
+  const emptyTaskMessage = filtersActive ? "No hay tareas que coincidan." : "Todavía no hay tareas.";
 
   return `<!doctype html>
 <html lang="es">
@@ -119,26 +239,29 @@ export const renderDashboard = (snapshot: DashboardSnapshot, refreshSeconds: num
 <body>
   <main>
     <header>
-      <div><p class="eyebrow">Control de operaciones</p><h1>Mine<span>Agents</span></h1><p>Estado de sólo lectura del coordinator.</p></div>
+      <div><p class="eyebrow">Control de operaciones</p><h1>Mine<span>Agents</span></h1><p>Crea y supervisa trabajo a través del coordinator.</p></div>
       <p class="stamp"><strong>Coordinator conectado</strong>Actualizado ${displayDate(snapshot.generatedAt)}</p>
     </header>
+    ${renderFeedback(options)}
     <section class="metrics" aria-label="Resumen">
       ${renderMetric("Tareas activas", activeTasks, `${snapshot.tasks.length} totales`)}
       ${renderMetric("Agentes online", onlineAgents, `${snapshot.agents.length} registrados`)}
       ${renderMetric("Completadas", snapshot.taskCounts.completed, `${snapshot.taskCounts.failed} fallidas`)}
       ${renderMetric("Proyectos", snapshot.projects.length, "persistencia coordinada")}
     </section>
+    ${renderControls(snapshot.projects)}
+    ${renderTaskFilters(snapshot.projects, filters)}
     <section class="layout">
       <article class="panel">
-        <div class="panel-head"><h2>Tareas recientes</h2><p>Mostrando ${visibleTasks.length} de ${snapshot.tasks.length}</p></div>
-        ${taskRows.length === 0 ? '<p class="empty">Todavía no hay tareas.</p>' : `<div class="table-wrap"><table><thead><tr><th>Tarea</th><th>Estado</th><th>Proyecto</th><th>Agente</th><th>Actualizada</th></tr></thead><tbody>${taskRows}</tbody></table></div>`}
+        <div class="panel-head"><h2>Tareas recientes</h2><p>${taskCountLabel}</p></div>
+        ${taskRows.length === 0 ? `<p class="empty">${emptyTaskMessage}</p>` : `<div class="table-wrap"><table><thead><tr><th>Tarea</th><th>Estado</th><th>Proyecto</th><th>Agente</th><th>Actualizada</th><th>Acción</th></tr></thead><tbody>${taskRows}</tbody></table></div>`}
       </article>
       <aside class="panel">
         <div class="panel-head"><h2>Agentes</h2><p>${onlineAgents} online</p></div>
         ${agentRows.length === 0 ? '<p class="empty">Sin agentes registrados.</p>' : `<ul class="agents">${agentRows}</ul>`}
       </aside>
     </section>
-    <footer>Recarga automática cada ${refreshSeconds} segundos · Sin controles de escritura</footer>
+    <footer>Recarga automática cada ${refreshSeconds} segundos · Las acciones se validan y registran en el coordinator</footer>
   </main>
 </body>
 </html>`;

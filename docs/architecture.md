@@ -2,7 +2,7 @@
 
 ## Estado actual
 
-MineAgents Platform es un monorepositorio TypeScript con npm workspaces. La base incluye un `coordinator` funcional con API REST mínima y persistencia en SQLite, un dashboard operativo de sólo lectura, observabilidad HTTP compartida, un SDK con contratos públicos, un adaptador seguro, un driver Mineflayer con movimiento y escrituras acotadas y un formato validado de blueprints. Docker Compose aporta un servidor Vanilla desechable y conecta un observador sin órdenes; las escrituras aún no se han ejecutado sobre el servidor y no existe lógica de agentes LLM.
+MineAgents Platform es un monorepositorio TypeScript con npm workspaces. La base incluye un `coordinator` funcional con API REST mínima y persistencia en SQLite, un dashboard con acciones operativas supervisadas, observabilidad HTTP compartida, un SDK con contratos públicos, un adaptador seguro, un driver Mineflayer con movimiento y escrituras acotadas y un formato validado de blueprints. Docker Compose aporta un servidor Vanilla desechable y conecta un observador sin órdenes; las escrituras aún no se han ejecutado sobre el servidor y no existe lógica de agentes LLM.
 
 ## Mapa de componentes
 
@@ -113,17 +113,17 @@ La compilación devuelve además la región mínima que contiene las colocacione
 
 El esquema se documenta en [Blueprints v1](blueprints.md) y la decisión arquitectónica en [ADR 0005](decisions/0005-versioned-blueprint-format.md).
 
-## Dashboard de sólo lectura
+## Dashboard operativo
 
 ```text
-navegador ──GET──► dashboard ──GET──► coordinator
+navegador ──GET/POST──► dashboard ──API pública──► coordinator
 ```
 
-`@mineagents/dashboard` agrega las rutas públicas de lectura del coordinator y presenta un snapshot operativo en HTML renderizado en servidor. No reexporta controles de mutación, no accede directamente a SQLite y no conoce Minecraft.
+`@mineagents/dashboard` agrega las rutas públicas de lectura del coordinator, presenta un snapshot operativo y ofrece formularios para crear proyectos y tareas o cancelar trabajo activo. No accede directamente a SQLite, no conoce Minecraft y delega todas las reglas de persistencia y transición al coordinator.
 
-Las respuestas externas se validan antes de renderizarse, el contenido dinámico se escapa y el servidor aplica una política CSP restrictiva. La ausencia del coordinator se representa como un estado 502 controlado. El endpoint `/api/snapshot` permite consumir la misma vista agregada sin duplicar acceso a la base.
+Las respuestas externas se validan antes de renderizarse, el contenido dinámico se escapa y el servidor aplica una política CSP restrictiva. Las mutaciones aceptan formularios acotados del mismo origen y usan POST/Redirect/GET sin reintentos automáticos. La ausencia del coordinator se representa como un estado controlado. El endpoint `/api/snapshot` permite consumir la misma vista agregada sin duplicar acceso a la base.
 
-La operación se documenta en [Dashboard](dashboard.md) y la separación de lectura en [ADR 0006](decisions/0006-read-only-dashboard.md).
+La operación se documenta en [Dashboard](dashboard.md). [ADR 0006](decisions/0006-read-only-dashboard.md) conserva los límites originales y [ADR 0012](decisions/0012-bounded-dashboard-actions.md) acota las mutaciones añadidas.
 
 ## Observabilidad HTTP
 
@@ -143,7 +143,7 @@ Cada workspace de producto tiene su propio `package.json`, `tsconfig.json` y pun
 - `minecraft-adapter/` contiene el límite seguro y simulable de acceso al mundo.
 - `minecraft-driver-mineflayer/` implementa conexión real, inspección y movimiento acotado, además de su proceso observador.
 - `agents/` separa implementaciones por rol.
-- `dashboard/` contiene el cliente HTTP, la vista y su servidor de sólo lectura.
+- `dashboard/` contiene el cliente HTTP, la vista y su servidor de acciones operativas.
 - `planner/` y `memory/` quedan como módulos independientes.
 - `blueprints/` valida y compila formatos de construcción versionados.
 - `docs/` documenta decisiones y alcance.
