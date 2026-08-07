@@ -38,6 +38,6 @@ La suite general también la incluye mediante `npm run test`.
 - No demuestra inventario, drops, recetas, latencia de red ni física real.
 - La composición de solicitudes de collector y builder vive en el harness de prueba.
 - Los agentes todavía no hacen polling ni traducen automáticamente una tarea genérica del coordinator a una orden Minecraft.
-- La prueba real sobre el mundo desechable continúa pendiente y requiere una autorización explícita antes de habilitar escrituras.
+- La prueba real sobre el mundo desechable continúa pendiente y requiere una autorización explícita antes de ejecutar escrituras.
 
 Por estos límites, esta prueba cierra la integración lógica del MVP, pero no la validación de escritura sobre Minecraft indicada en la Fase 3.

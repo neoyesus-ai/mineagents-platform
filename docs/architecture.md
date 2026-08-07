@@ -2,7 +2,7 @@
 
 ## Estado actual
 
-MineAgents Platform es un monorepositorio TypeScript con npm workspaces. La base incluye un `coordinator` funcional con API REST mínima y persistencia en SQLite, un dashboard operativo de sólo lectura, observabilidad HTTP compartida, un SDK con contratos públicos, un adaptador seguro, un driver Mineflayer con movimiento acotado y un formato validado de blueprints. Docker Compose aporta un servidor Vanilla desechable y conecta un observador real; todavía no existen escrituras reales ni lógica de agentes LLM.
+MineAgents Platform es un monorepositorio TypeScript con npm workspaces. La base incluye un `coordinator` funcional con API REST mínima y persistencia en SQLite, un dashboard operativo de sólo lectura, observabilidad HTTP compartida, un SDK con contratos públicos, un adaptador seguro, un driver Mineflayer con movimiento y escrituras acotadas y un formato validado de blueprints. Docker Compose aporta un servidor Vanilla desechable y conecta un observador sin órdenes; las escrituras aún no se han ejecutado sobre el servidor y no existe lógica de agentes LLM.
 
 ## Mapa de componentes
 
@@ -57,7 +57,7 @@ La decisión completa y sus consecuencias se documentan en [ADR 0001](decisions/
 
 ```text
 agents ──► SafeMinecraftAdapter ──► MinecraftDriver ──► Minecraft
-                 ▲              (movimiento acotado, sin escrituras)
+                 ▲             (movimiento y escrituras acotadas)
                  │
           policy + verifier
 ```
@@ -71,12 +71,12 @@ La decisión de seguridad completa se documenta en [ADR 0002](decisions/0002-saf
 ```text
 coordinator ◄── heartbeat ── mineflayer-observer ──► minecraft:25565
                                   │
-                                  └── MineflayerDriver ──► estado + inspección + movimiento acotado
+                                  └── MineflayerDriver ──► inspección + acciones acotadas
 ```
 
-`@mineagents/mineflayer-driver` implementa el límite `MinecraftDriver` para estado, inspección de bloques cargados y movimiento. Cada movimiento exige regiones explícitas que contengan la posición inicial y el destino. El pathfinder excluye pasos fuera de ellas, una vigilancia detiene cualquier salida durante la ejecución y un timeout acota la operación. El perfil no excava, coloca bloques, abre puertas, hace parkour ni usa andamiaje.
+`@mineagents/mineflayer-driver` implementa el límite `MinecraftDriver` para estado, inspección, movimiento y escrituras acotadas. Cada movimiento exige regiones explícitas que contengan la posición inicial y el destino. El pathfinder excluye pasos fuera de ellas, una vigilancia detiene cualquier salida durante la ejecución y un timeout acota la operación. El perfil de navegación no excava, coloca bloques, abre puertas, hace parkour ni usa andamiaje.
 
-La colocación y rotura continúan rechazadas. El proceso observador usa autenticación offline sólo dentro del entorno local, mantiene su registro en el coordinator y no expone órdenes de movimiento. La introducción inicial del driver se documenta en [ADR 0009](decisions/0009-read-only-mineflayer-driver.md) y el nuevo límite de movimiento en [ADR 0010](decisions/0010-bounded-mineflayer-movement.md).
+La colocación y rotura usan precondiciones exactas, alcance local, inventario explícito y verificación posterior, pero sólo `SafeMinecraftAdapter` puede autorizar una escritura. El proceso observador usa autenticación offline local, mantiene su registro en el coordinator y no expone órdenes. La evolución se documenta en [ADR 0009](decisions/0009-read-only-mineflayer-driver.md), [ADR 0010](decisions/0010-bounded-mineflayer-movement.md) y [ADR 0011](decisions/0011-preconditioned-mineflayer-writes.md).
 
 ## Servidor Minecraft de desarrollo
 

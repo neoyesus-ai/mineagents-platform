@@ -2,7 +2,7 @@
 
 ## Estado
 
-Aceptada.
+Aceptada. La restricción temporal de escrituras fue sustituida por ADR 0011.
 
 ## Contexto
 

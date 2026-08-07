@@ -23,6 +23,7 @@ const requiredPaths = [
   "docs/mvp-flow.md",
   "docs/observability.md",
   "docs/decisions/0010-bounded-mineflayer-movement.md",
+  "docs/decisions/0011-preconditioned-mineflayer-writes.md",
   "docs/minecraft-server.md",
   "docs/decisions/0008-disposable-minecraft-server.md",
   "docs/decisions/0009-read-only-mineflayer-driver.md",

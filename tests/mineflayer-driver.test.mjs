@@ -10,6 +10,9 @@ import {
   runBoundedMovementSmoke,
   sendCoordinatorHeartbeat,
 } from "../minecraft-driver-mineflayer/dist/index.js";
+import {
+  createWritableMineflayerBot,
+} from "./helpers/mineflayer-write-harness.mjs";
 
 const hasDriverCode = (code) =>
   (error) => error instanceof MineflayerDriverError && error.code === code;
@@ -41,7 +44,7 @@ const createFakeBot = () => {
   return bot;
 };
 
-test("read-only Mineflayer driver exposes normalized state and block snapshots", async () => {
+test("Mineflayer driver exposes normalized state and block snapshots", async () => {
   const bot = createFakeBot();
   const driver = new MineflayerDriver(bot);
 
@@ -73,7 +76,7 @@ test("read-only Mineflayer driver exposes normalized state and block snapshots",
   );
 });
 
-test("read-only Mineflayer driver fails closed for unloaded chunks and writes", async () => {
+test("Mineflayer driver fails closed for unloaded write targets", async () => {
   const bot = createFakeBot();
   bot.blockAt = () => null;
   const driver = new MineflayerDriver(bot);
@@ -94,16 +97,176 @@ test("read-only Mineflayer driver fails closed for unloaded chunks and writes", 
   );
   await assert.rejects(
     driver.placeBlock(position, "minecraft:stone", ["minecraft:air"]),
-    hasDriverCode("UNSUPPORTED_OPERATION"),
+    hasDriverCode("CHUNK_NOT_LOADED"),
   );
   await assert.rejects(
     driver.breakBlock(position, "minecraft:stone"),
-    hasDriverCode("UNSUPPORTED_OPERATION"),
+    hasDriverCode("CHUNK_NOT_LOADED"),
   );
 
   driver.close("test shutdown");
   assert.equal(await driver.waitForDisconnect(), "test shutdown");
   assert.equal((await driver.getState()).connected, false);
+});
+
+test("bounded writes place and break exact blocks with postcondition checks", async () => {
+  const target = {
+    dimension: "minecraft:overworld",
+    x: 2,
+    y: 64,
+    z: 0,
+  };
+  const world = createWritableMineflayerBot({ items: [{ name: "oak_log" }] });
+  world.setBlock(target, "air");
+  world.setBlock({ ...target, y: target.y - 1 }, "stone");
+  const driver = new MineflayerDriver(world.bot);
+
+  await driver.placeBlock(target, "minecraft:oak_log", ["minecraft:air"]);
+  assert.equal(world.blockNameAt(target), "oak_log");
+  assert.equal(world.bot.equipped.item.name, "oak_log");
+  assert.equal(world.bot.equipped.destination, "hand");
+  assert.deepEqual(
+    {
+      x: world.bot.placeCall.faceVector.x,
+      y: world.bot.placeCall.faceVector.y,
+      z: world.bot.placeCall.faceVector.z,
+    },
+    { x: 0, y: 1, z: 0 },
+  );
+
+  await driver.breakBlock(target, "minecraft:oak_log");
+  assert.equal(world.blockNameAt(target), "air");
+  assert.equal(world.bot.digCall.forceLook, true);
+  assert.equal(world.bot.digCall.digFace, "raycast");
+});
+
+test("bounded writes reject invalid preconditions, inventory and reach", async () => {
+  const target = {
+    dimension: "minecraft:overworld",
+    x: 2,
+    y: 64,
+    z: 0,
+  };
+  const world = createWritableMineflayerBot();
+  world.setBlock(target, "dirt");
+  world.setBlock({ ...target, y: target.y - 1 }, "stone");
+  const driver = new MineflayerDriver(world.bot);
+
+  await assert.rejects(
+    driver.placeBlock(target, "minecraft:oak_log", ["minecraft:air"]),
+    hasDriverCode("BLOCK_PRECONDITION_FAILED"),
+  );
+  world.setBlock(target, "air");
+  await assert.rejects(
+    driver.placeBlock(target, "minecraft:oak_log", ["minecraft:air"]),
+    hasDriverCode("ITEM_NOT_AVAILABLE"),
+  );
+  await assert.rejects(
+    driver.placeBlock(target, "oak_log", ["minecraft:air"]),
+    hasDriverCode("INVALID_WRITE_REQUEST"),
+  );
+  await assert.rejects(
+    driver.breakBlock({ ...target, dimension: "minecraft:the_nether" }, "minecraft:air"),
+    hasDriverCode("DIMENSION_MISMATCH"),
+  );
+
+  const distant = { ...target, x: 20 };
+  const distantWorld = createWritableMineflayerBot({ items: [{ name: "oak_log" }] });
+  distantWorld.setBlock(distant, "air");
+  distantWorld.setBlock({ ...distant, y: distant.y - 1 }, "stone");
+  const distantDriver = new MineflayerDriver(distantWorld.bot);
+  await assert.rejects(
+    distantDriver.placeBlock(distant, "minecraft:oak_log", ["minecraft:air"]),
+    hasDriverCode("BLOCK_NOT_REACHABLE"),
+  );
+
+  const undiggableWorld = createWritableMineflayerBot({ canDigBlock: () => false });
+  undiggableWorld.setBlock(target, "oak_log");
+  const undiggableDriver = new MineflayerDriver(undiggableWorld.bot);
+  await assert.rejects(
+    undiggableDriver.breakBlock(target, "minecraft:oak_log"),
+    hasDriverCode("BLOCK_NOT_REACHABLE"),
+  );
+});
+
+test("bounded writes fail when Mineflayer postconditions do not match", async () => {
+  const target = {
+    dimension: "minecraft:overworld",
+    x: 2,
+    y: 64,
+    z: 0,
+  };
+  const placementWorld = createWritableMineflayerBot({
+    items: [{ name: "oak_log" }],
+    async onPlace() {},
+  });
+  placementWorld.setBlock(target, "air");
+  placementWorld.setBlock({ ...target, y: target.y - 1 }, "stone");
+  await assert.rejects(
+    new MineflayerDriver(placementWorld.bot).placeBlock(
+      target,
+      "minecraft:oak_log",
+      ["minecraft:air"],
+    ),
+    hasDriverCode("WRITE_VERIFICATION_FAILED"),
+  );
+
+  const breakingWorld = createWritableMineflayerBot({ async onDig() {} });
+  breakingWorld.setBlock(target, "oak_log");
+  await assert.rejects(
+    new MineflayerDriver(breakingWorld.bot).breakBlock(
+      target,
+      "minecraft:oak_log",
+    ),
+    hasDriverCode("WRITE_VERIFICATION_FAILED"),
+  );
+});
+
+test("Mineflayer driver serializes movement and world writes", async () => {
+  const breakTarget = {
+    dimension: "minecraft:overworld",
+    x: 1,
+    y: 64,
+    z: 0,
+  };
+  const placeTarget = { ...breakTarget, x: 2 };
+  let finishDig;
+  const world = createWritableMineflayerBot({
+    items: [{ name: "oak_log" }],
+    onDig: ({ block, setBlock }) =>
+      new Promise((resolve) => {
+        finishDig = () => {
+          setBlock(block.position, "air");
+          resolve();
+        };
+      }),
+  });
+  world.setBlock(breakTarget, "oak_log");
+  world.setBlock(placeTarget, "air");
+  world.setBlock({ ...placeTarget, y: placeTarget.y - 1 }, "stone");
+  const driver = new MineflayerDriver(world.bot);
+
+  const breaking = driver.breakBlock(breakTarget, "minecraft:oak_log");
+  await assert.rejects(
+    driver.moveTo(
+      { dimension: "minecraft:overworld", x: 0, y: 64, z: 0 },
+      [{
+        dimension: "minecraft:overworld",
+        min: { x: 0, y: 64, z: 0 },
+        max: { x: 2, y: 64, z: 0 },
+      }],
+    ),
+    hasDriverCode("OPERATION_IN_PROGRESS"),
+  );
+  await assert.rejects(
+    driver.placeBlock(placeTarget, "minecraft:oak_log", ["minecraft:air"]),
+    hasDriverCode("OPERATION_IN_PROGRESS"),
+  );
+  finishDig();
+  await breaking;
+
+  await driver.placeBlock(placeTarget, "minecraft:oak_log", ["minecraft:air"]);
+  assert.equal(world.blockNameAt(placeTarget), "oak_log");
 });
 
 const createMovementHarness = (bot) => {

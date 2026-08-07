@@ -63,9 +63,9 @@ La prueba usa una identidad efímera, encuentra un destino transitable cerca del
 
 La ejecución verificada alcanzó el destino al primer intento, regresó exactamente al origen y produjo `blocksUnchanged: true`. El servidor permaneció sano y el observador se reconectó correctamente tras reconstruir su imagen.
 
-Esta prueba valida conexión, inspección y movimiento reales. No marca completa la fase 3: todavía faltan las escrituras autorizadas y el flujo integral de recolector y constructor.
+Esta prueba valida conexión, inspección y movimiento reales. El flujo lógico de collector y builder ya se prueba de extremo a extremo en memoria; la fase 3 sigue abierta hasta validar escrituras autorizadas en este servidor desechable.
 
-La presencia del servidor no concede permisos de escritura. El driver permite movimiento únicamente cuando recibe regiones explícitas y mantiene colocación y rotura deshabilitadas. Las futuras acciones que modifiquen bloques deberán atravesar `SafeMinecraftAdapter` con una política limitada y autorización externa.
+La presencia del servidor no concede permisos de escritura. El driver implementa colocación y rotura con precondiciones defensivas, pero el observer no recibe órdenes. Toda acción que modifique bloques debe atravesar `SafeMinecraftAdapter` con política limitada y autorización externa.
 
 ## Seguridad y persistencia
 

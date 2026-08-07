@@ -2,7 +2,7 @@
 
 ## Estado
 
-Aceptada.
+Sustituida parcialmente por ADR 0010 y ADR 0011.
 
 ## Contexto
 

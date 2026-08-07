@@ -66,7 +66,7 @@ const main = async (): Promise<void> => {
     username: config.username,
     version: config.version,
     position: state.position,
-    mode: "read-only",
+    mode: "observer",
   });
 
   await heartbeat();

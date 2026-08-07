@@ -18,7 +18,7 @@ La visión es que varios agentes especializados colaboren sobre un mismo proyect
 - El dashboard presenta el estado público del coordinator sin exponer escrituras.
 - Blueprints ya valida y compila planos; planner y memory aportarán planificación y memoria sin mezclar responsabilidades.
 
-La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. Docker Compose incluye un servidor Vanilla 1.21.11 con un mundo desechable separado y un observador Mineflayer que no recibe órdenes. El driver real ya admite movimiento acotado, pero todavía no hay escrituras reales ni integración con LLM.
+La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. Docker Compose incluye un servidor Vanilla 1.21.11 con un mundo desechable separado y un observador Mineflayer que no recibe órdenes. El driver admite movimiento y escrituras acotadas, aunque las escrituras reales todavía no se han habilitado ni validado sobre el servidor.
 
 ## Arquitectura prevista
 
@@ -86,7 +86,7 @@ El SDK es independiente de HTTP, SQLite y Minecraft. El coordinator lo consume c
 
 `@mineagents/minecraft-adapter` define una interfaz independiente del cliente real y un guardián que aplica regiones permitidas, límites de movimiento, listas de bloques y autorizaciones externas con caducidad y cuota. `createReadOnlyMinecraftPolicy` desactiva movimiento y escrituras por defecto.
 
-`@mineagents/mineflayer-driver` conecta un observador real al servidor 1.21.11, expone estado e inspección de bloques cargados y registra heartbeats en el coordinator. Su movimiento usa pathfinding con regiones explícitas, timeout, vigilancia en ejecución y un perfil que impide excavar, colocar, abrir puertas o usar andamiaje. La colocación y rotura de bloques siguen rechazadas.
+`@mineagents/mineflayer-driver` conecta un observador real al servidor 1.21.11, expone estado e inspección de bloques cargados y registra heartbeats en el coordinator. El movimiento usa regiones explícitas y un pathfinder sin escrituras. Colocación y rotura exigen estado previo exacto, chunk cargado, alcance, inventario cuando corresponde y verificación posterior; ninguna operación mutante puede solaparse. Las autorizaciones externas siguen siendo responsabilidad de `SafeMinecraftAdapter`.
 
 El contenedor `mineflayer-observer` usa una identidad offline de desarrollo y se conecta exclusivamente al servicio `minecraft` de Compose.
 
@@ -184,7 +184,7 @@ Todos los puertos se limitan a loopback. El servidor usa modo creativo, dificult
 2. Terminar contratos del SDK y de tareas compartidas.
 3. Evolucionar la cola persistente y el manejo de progreso.
 4. Implementar los agentes recolector y constructor sobre límites seguros.
-5. Validar el movimiento acotado y añadir escrituras autorizadas sobre el mundo desechable.
+5. Validar las escrituras autorizadas sobre el mundo desechable.
 6. Crear dashboard, métricas y despliegue reproducible.
 
 Fuera del MVP inicial quedan la integración con LLM, la economía entre agentes, las personalidades complejas y la búsqueda de imágenes.

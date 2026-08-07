@@ -10,9 +10,10 @@ import { createBot, type Bot } from "mineflayer";
 import pathfinderPackage from "mineflayer-pathfinder";
 import { Vec3 } from "vec3";
 import { BoundedMovementController } from "./bounded-movement.js";
+import { BoundedWriteController } from "./bounded-writes.js";
 import { MineflayerDriverError } from "./errors.js";
 const { pathfinder } = pathfinderPackage;
-
+type MutatingOperation = "movement" | "block placement" | "block breaking";
 
 export interface MineflayerConnectionOptions {
   host: string;
@@ -141,12 +142,15 @@ export class MineflayerDriver implements MinecraftDriver {
   private lastPosition: WorldPosition;
   private readonly disconnectPromise: Promise<string>;
   private readonly movementController: BoundedMovementController;
+  private readonly writeController: BoundedWriteController;
+  private operationInProgress: MutatingOperation | undefined;
 
   constructor(
     private readonly bot: Bot,
     movementTimeoutMs = 30_000,
   ) {
     this.lastPosition = this.readPosition();
+    this.writeController = new BoundedWriteController(bot);
     this.movementController = new BoundedMovementController(bot, movementTimeoutMs);
     this.disconnectPromise = new Promise((resolve) => {
       bot.once("end", (reason) => {
@@ -197,8 +201,10 @@ export class MineflayerDriver implements MinecraftDriver {
     allowedRegions: readonly WorldRegion[],
   ): Promise<void> {
     this.assertConnected();
-    await this.movementController.moveTo(target, allowedRegions);
-    this.lastPosition = this.readPosition();
+    await this.runExclusive("movement", async () => {
+      await this.movementController.moveTo(target, allowedRegions);
+      this.lastPosition = this.readPosition();
+    });
   }
 
   async placeBlock(
@@ -206,19 +212,20 @@ export class MineflayerDriver implements MinecraftDriver {
     blockName: string,
     expectedCurrentBlockNames: readonly string[],
   ): Promise<void> {
-    void position;
-    void blockName;
-    void expectedCurrentBlockNames;
-    this.unsupported("Block placement");
+    this.assertConnected();
+    await this.runExclusive("block placement", () =>
+      this.writeController.placeBlock(position, blockName, expectedCurrentBlockNames),
+    );
   }
 
   async breakBlock(
     position: WorldPosition,
     expectedBlockName: string,
   ): Promise<void> {
-    void position;
-    void expectedBlockName;
-    this.unsupported("Block breaking");
+    this.assertConnected();
+    await this.runExclusive("block breaking", () =>
+      this.writeController.breakBlock(position, expectedBlockName),
+    );
   }
 
   waitForDisconnect(): Promise<string> {
@@ -248,12 +255,23 @@ export class MineflayerDriver implements MinecraftDriver {
     }
   }
 
-  private unsupported(operation: string): never {
-    this.assertConnected();
-    throw new MineflayerDriverError(
-      "UNSUPPORTED_OPERATION",
-      `${operation} is disabled because Mineflayer world writes are not enabled.`,
-    );
+  private async runExclusive<T>(
+    operation: MutatingOperation,
+    execute: () => Promise<T>,
+  ): Promise<T> {
+    if (this.operationInProgress) {
+      throw new MineflayerDriverError(
+        "OPERATION_IN_PROGRESS",
+        `Cannot start ${operation} while ${this.operationInProgress} is in progress.`,
+      );
+    }
+
+    this.operationInProgress = operation;
+    try {
+      return await execute();
+    } finally {
+      this.operationInProgress = undefined;
+    }
   }
 }
 

@@ -1,4 +1,5 @@
 export * from "./bounded-movement.js";
+export * from "./bounded-writes.js";
 export * from "./config.js";
 export * from "./coordinator-heartbeat.js";
 export * from "./errors.js";
