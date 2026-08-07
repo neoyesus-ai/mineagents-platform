@@ -20,6 +20,7 @@ const requiredPaths = [
   "docs/architecture.md",
   "docs/dashboard.md",
   "docs/deployment.md",
+  "docs/mvp-flow.md",
   "docs/observability.md",
   "docs/decisions/0010-bounded-mineflayer-movement.md",
   "docs/minecraft-server.md",

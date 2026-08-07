@@ -194,6 +194,7 @@ Fuera del MVP inicial quedan la integración con LLM, la economía entre agentes
 - [Arquitectura](docs/architecture.md)
 - [Dashboard](docs/dashboard.md)
 - [Despliegue, respaldo y recuperación](docs/deployment.md)
+- [Flujo integral simulado del MVP](docs/mvp-flow.md)
 - [Observabilidad](docs/observability.md)
 - [Servidor Minecraft de desarrollo](docs/minecraft-server.md)
 - [Visión](docs/vision.md)
