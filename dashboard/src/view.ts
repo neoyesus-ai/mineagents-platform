@@ -5,8 +5,12 @@ import {
   hasDashboardTaskFilters,
   type DashboardTaskFilters,
 } from "./filters.js";
+import {
+  buildDashboardPageHref,
+  paginateDashboardTasks,
+  type DashboardTaskPage,
+} from "./pagination.js";
 
-const visibleTaskLimit = 50;
 const visibleAgentLimit = 12;
 
 export interface DashboardFeedback {
@@ -16,6 +20,7 @@ export interface DashboardFeedback {
 
 export interface DashboardViewOptions extends DashboardFeedback {
   filters?: DashboardTaskFilters;
+  page?: number;
 }
 
 const notices: Readonly<Record<string, string>> = {
@@ -124,6 +129,37 @@ const renderTaskFilters = (
       </form>
     </section>`;
 };
+const renderPaginationLink = (
+  enabled: boolean,
+  href: string,
+  label: string,
+  rel: "prev" | "next",
+): string =>
+  enabled
+    ? `<a class="button-secondary" href="${escapeHtml(href)}" rel="${rel}">${label}</a>`
+    : `<span class="button-secondary is-disabled" aria-disabled="true">${label}</span>`;
+
+const renderTaskPagination = (
+  filters: DashboardTaskFilters,
+  page: DashboardTaskPage,
+): string => {
+  if (page.totalPages <= 1) {
+    return "";
+  }
+
+  const previousHref = buildDashboardPageHref(filters, page.currentPage - 1);
+  const nextHref = buildDashboardPageHref(filters, page.currentPage + 1);
+
+  return `
+    <nav class="task-pagination" aria-label="Paginación de tareas">
+      <span>Mostrando ${page.firstItem}–${page.lastItem} de ${page.totalItems}</span>
+      <div class="pagination-links">
+        ${renderPaginationLink(page.hasPrevious, previousHref, "Anterior", "prev")}
+        <span>Página ${page.currentPage} de ${page.totalPages}</span>
+        ${renderPaginationLink(page.hasNext, nextHref, "Siguiente", "next")}
+      </div>
+    </nav>`;
+};
 
 const renderTask = (
   task: TaskRecord,
@@ -188,6 +224,9 @@ const styles = `
   .filter-actions { display:flex; align-items:center; gap:10px; grid-column:1/-1; }
   .button-secondary { display:inline-block; border:1px solid var(--line); border-radius:8px; color:var(--text); padding:8px 14px; font-weight:800; text-decoration:none; }
   .button-secondary:hover { border-color:var(--green); }
+  .task-pagination { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:14px 18px; border-top:1px solid var(--line); color:var(--muted); }
+  .pagination-links { display:flex; align-items:center; gap:10px; }
+  .is-disabled { opacity:.45; pointer-events:none; }
   .layout { display:grid; grid-template-columns:minmax(0,3fr) minmax(250px,1fr); gap:16px; align-items:start; }
   .panel { border-radius:14px; overflow:hidden; } .panel-head { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:18px 20px; border-bottom:1px solid var(--line); }
   .panel-head h2,.panel-head p { margin:0; } .panel-head p { color:var(--muted); font-size:.85rem; }
@@ -203,7 +242,7 @@ const styles = `
   .agent-state-online { background:var(--green); } .empty { padding:36px 20px; color:var(--muted); text-align:center; }
   footer { margin-top:18px; color:var(--muted); font-size:.82rem; }
   @media (max-width:850px) { .metrics { grid-template-columns:repeat(2,1fr); } .controls,.layout { grid-template-columns:1fr; } }
-  @media (max-width:560px) { header { align-items:flex-start; flex-direction:column; } .stamp { text-align:left; } .metrics,.task-filters { grid-template-columns:1fr; } main { width:min(100% - 20px,1180px); padding-top:24px; } }
+  @media (max-width:560px) { header,.task-pagination { align-items:flex-start; flex-direction:column; } .stamp { text-align:left; } .metrics,.task-filters { grid-template-columns:1fr; } main { width:min(100% - 20px,1180px); padding-top:24px; } }
 `;
 
 export const renderDashboard = (
@@ -216,15 +255,15 @@ export const renderDashboard = (
   const filters = options.filters ?? {};
   const filteredTasks = filterDashboardTasks(snapshot.tasks, filters);
   const filtersActive = hasDashboardTaskFilters(filters);
-  const visibleTasks = filteredTasks.slice(0, visibleTaskLimit);
+  const taskPage = paginateDashboardTasks(filteredTasks, options.page ?? 1);
+  const visibleTasks = taskPage.items;
   const visibleAgents = snapshot.agents.slice(0, visibleAgentLimit);
   const activeTasks = snapshot.taskCounts.pending + snapshot.taskCounts.assigned + snapshot.taskCounts.running;
   const onlineAgents = snapshot.agents.filter((agent) => agent.status === "online").length;
   const taskRows = visibleTasks.map((task) => renderTask(task, projects, agents)).join("");
   const agentRows = visibleAgents.map(renderAgent).join("");
-  const taskCountLabel = filtersActive
-    ? `Mostrando ${visibleTasks.length} de ${filteredTasks.length} coincidencias`
-    : `Mostrando ${visibleTasks.length} de ${snapshot.tasks.length}`;
+  const resultLabel = filtersActive ? "coincidencias" : "tareas";
+  const taskCountLabel = `Página ${taskPage.currentPage} de ${taskPage.totalPages} · ${taskPage.totalItems} ${resultLabel}`;
   const emptyTaskMessage = filtersActive ? "No hay tareas que coincidan." : "Todavía no hay tareas.";
 
   return `<!doctype html>
@@ -255,6 +294,7 @@ export const renderDashboard = (
       <article class="panel">
         <div class="panel-head"><h2>Tareas recientes</h2><p>${taskCountLabel}</p></div>
         ${taskRows.length === 0 ? `<p class="empty">${emptyTaskMessage}</p>` : `<div class="table-wrap"><table><thead><tr><th>Tarea</th><th>Estado</th><th>Proyecto</th><th>Agente</th><th>Actualizada</th><th>Acción</th></tr></thead><tbody>${taskRows}</tbody></table></div>`}
+        ${renderTaskPagination(filters, taskPage)}
       </article>
       <aside class="panel">
         <div class="panel-head"><h2>Agentes</h2><p>${onlineAgents} online</p></div>

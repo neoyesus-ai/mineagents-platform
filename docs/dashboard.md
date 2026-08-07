@@ -18,8 +18,9 @@ Cada ruta acepta únicamente su método documentado. Si el coordinator no respon
 
 `GET /` acepta `q` para buscar sin distinguir mayúsculas en título y descripción, `status` para uno de los estados del SDK y `projectId` para limitar el resultado a un proyecto. Los tres filtros se combinan y quedan reflejados en la URL para poder recargar o compartir la vista.
 
-La búsqueda admite hasta 80 caracteres y el identificador de proyecto hasta 200. Valores inválidos o parámetros repetidos no activan ese filtro. El filtrado se aplica al snapshot completo antes del límite visual de 50 tareas; `GET /api/snapshot` continúa entregando el agregado sin filtrar.
+La búsqueda admite hasta 80 caracteres y el identificador de proyecto hasta 200. Valores inválidos o parámetros repetidos no activan ese filtro. El filtrado se aplica al snapshot completo antes de paginar; `GET /api/snapshot` continúa entregando el agregado sin filtrar.
 
+El parámetro `page` acepta enteros de 1 a 10 000 y muestra 50 tareas por página. Un valor inválido vuelve a la primera página y uno superior al total se acota a la última. Los enlaces anterior y siguiente conservan todos los filtros activos.
 
 ## Configuración
 
@@ -57,6 +58,6 @@ Después de una escritura válida, el dashboard responde con `303` y vuelve al p
 - Las páginas incluyen CSP restrictiva con formularios limitados a `self`, `no-store`, protección contra framing y `nosniff`.
 - Las acciones exigen `Origin` con el mismo host, rechazan `Sec-Fetch-Site: cross-site`, campos repetidos o desconocidos y cuerpos superiores a 16 KiB.
 - La interfaz usa HTML del servidor y formularios estándar, sin JavaScript cliente.
-- Se muestran como máximo 50 tareas y 12 agentes, aunque las métricas cuentan el snapshot completo.
+- Se muestran como máximo 50 tareas por página y 12 agentes, aunque las métricas cuentan el snapshot completo.
 
-La comprobación de origen evita solicitudes cross-site, pero no sustituye autenticación ni autorización. Mantén el puerto ligado a loopback —como hace Docker Compose— o coloca el servicio detrás de un proxy autenticado. Paginación, streaming y control de acceso por roles quedan fuera de este incremento.
+La comprobación de origen evita solicitudes cross-site, pero no sustituye autenticación ni autorización. Mantén el puerto ligado a loopback —como hace Docker Compose— o coloca el servicio detrás de un proxy autenticado. Streaming y control de acceso por roles quedan fuera de este incremento.

@@ -4,5 +4,6 @@ export * from "./contracts.js";
 export * from "./coordinator-client.js";
 export * from "./errors.js";
 export * from "./filters.js";
+export * from "./pagination.js";
 export * from "./server.js";
 export * from "./view.js";

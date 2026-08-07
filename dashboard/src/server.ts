@@ -13,6 +13,7 @@ import {
   DashboardUpstreamError,
 } from "./errors.js";
 import { parseDashboardTaskFilters } from "./filters.js";
+import { parseDashboardPage } from "./pagination.js";
 import { renderDashboard, renderUnavailable } from "./view.js";
 
 export interface DashboardServerOptions {
@@ -237,6 +238,7 @@ export const createDashboardRequestHandler = (options: DashboardServerOptions) =
             notice: url.searchParams.get("notice"),
             error: url.searchParams.get("error"),
             filters: parseDashboardTaskFilters(url.searchParams),
+            page: parseDashboardPage(url.searchParams),
           }),
         );
       } catch (error) {

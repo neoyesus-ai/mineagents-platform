@@ -110,7 +110,7 @@ El resultado conserva las posiciones colocadas ante cancelaciones o fallos. El b
 
 ## Dashboard mínimo
 
-`@mineagents/dashboard` agrega las lecturas de `/health`, `/agents`, `/tasks` y `/projects` del coordinator. Renderiza métricas, formularios operativos, filtros combinables, tareas recientes y agentes registrados en HTML sin JavaScript cliente, valida las respuestas del servicio y escapa todo contenido dinámico.
+`@mineagents/dashboard` agrega las lecturas de `/health`, `/agents`, `/tasks` y `/projects` del coordinator. Renderiza métricas, formularios operativos, filtros combinables, paginación de tareas y agentes registrados en HTML sin JavaScript cliente, valida las respuestas del servicio y escapa todo contenido dinámico.
 
 Además de sus rutas `GET`, acepta acciones `POST` del mismo origen para crear proyectos, crear tareas pendientes y cancelar tareas activas. Todas las escrituras atraviesan la API pública del coordinator; una caída produce una respuesta controlada y nunca se reintenta una mutación automáticamente. La configuración y operación se documentan en [docs/dashboard.md](docs/dashboard.md).
 
