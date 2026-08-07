@@ -172,9 +172,10 @@ docker compose up --build
 Servicios disponibles:
 
 - Minecraft Java 1.21.11: `127.0.0.1:25565` desde el host y `minecraft:25565` desde otros contenedores.
-- Coordinator: `http://localhost:3000`.
-- Dashboard: `http://localhost:3001`.
-El servidor de desarrollo usa modo creativo y dificultad pacífica. `online-mode` está desactivado exclusivamente para permitir agentes locales sin credenciales; el puerto se limita a loopback y no debe exponerse a Internet. La configuración completa está en [docs/minecraft-server.md](docs/minecraft-server.md).
+- Coordinator: `http://127.0.0.1:3000`.
+- Dashboard: `http://127.0.0.1:3001`.
+
+Todos los puertos se limitan a loopback. El servidor usa modo creativo, dificultad pacífica y `online-mode` desactivado exclusivamente para identidades locales de prueba. La configuración de Minecraft está en [docs/minecraft-server.md](docs/minecraft-server.md); el procedimiento operativo completo está en [docs/deployment.md](docs/deployment.md).
 
 
 ## Roadmap inicial
@@ -192,6 +193,7 @@ Fuera del MVP inicial quedan la integración con LLM, la economía entre agentes
 
 - [Arquitectura](docs/architecture.md)
 - [Dashboard](docs/dashboard.md)
+- [Despliegue, respaldo y recuperación](docs/deployment.md)
 - [Observabilidad](docs/observability.md)
 - [Servidor Minecraft de desarrollo](docs/minecraft-server.md)
 - [Visión](docs/vision.md)

@@ -59,7 +59,7 @@ services:
       COORDINATOR_PORT: "3000"
       COORDINATOR_DB_PATH: /data/coordinator.sqlite
     ports:
-      - "3000:3000"
+      - "127.0.0.1:${COORDINATOR_PORT:-3000}:3000"
     volumes:
       - coordinator-data:/data
 
@@ -74,8 +74,10 @@ services:
     depends_on:
       - coordinator
     ports:
-      - "3001:3001"
+      - "127.0.0.1:${DASHBOARD_PORT:-3001}:3001"
 
 volumes:
-  coordinator-data: {}
-  minecraft-demo-data: {}
+  coordinator-data:
+    name: "${COORDINATOR_DATA_VOLUME:-mineagents-platform_coordinator-data}"
+  minecraft-demo-data:
+    name: "${MINECRAFT_DATA_VOLUME:-mineagents-platform_minecraft-demo-data}"

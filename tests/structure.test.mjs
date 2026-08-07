@@ -19,6 +19,7 @@ const requiredPaths = [
   "observability/package.json",
   "docs/architecture.md",
   "docs/dashboard.md",
+  "docs/deployment.md",
   "docs/observability.md",
   "docs/decisions/0010-bounded-mineflayer-movement.md",
   "docs/minecraft-server.md",
@@ -85,7 +86,17 @@ test("compose pins an isolated Minecraft development server", async () => {
     compose,
     /"127\.0\.0\.1:\$\{MINECRAFT_PORT:-25565\}:25565"/,
   );
+  assert.match(
+    compose,
+    /"127\.0\.0\.1:\$\{COORDINATOR_PORT:-3000\}:3000"/,
+  );
+  assert.match(
+    compose,
+    /"127\.0\.0\.1:\$\{DASHBOARD_PORT:-3001\}:3001"/,
+  );
   assert.match(compose, /minecraft-demo-data:\/data/);
+  assert.match(compose, /COORDINATOR_DATA_VOLUME:-mineagents-platform_coordinator-data/);
+  assert.match(compose, /MINECRAFT_DATA_VOLUME:-mineagents-platform_minecraft-demo-data/);
   assert.match(compose, /ONLINE_MODE: "FALSE"/);
   assert.match(compose, /mineflayer-observer:/);
   assert.match(compose, /MINECRAFT_HOST: minecraft/);

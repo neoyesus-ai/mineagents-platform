@@ -39,7 +39,7 @@ El roadmap avanza por fases verificables. Completar una fase no habilita automá
 
 - [x] Crear un dashboard mínimo.
 - [x] Añadir métricas y logs estructurados.
-- [ ] Documentar despliegue, respaldo y recuperación.
+- [x] Documentar despliegue, respaldo y recuperación.
 - [ ] Ejecutar una prueba integral del flujo del MVP.
 
 ## Fuera del MVP inicial
