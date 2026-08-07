@@ -1,0 +1,22 @@
+{
+  "name": "@mineagents/mineflayer-driver",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@mineagents/minecraft-adapter": "0.1.0",
+    "@mineagents/observability": "0.1.0",
+    "mineflayer": "4.37.1",
+    "vec3": "0.2.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/cli.js"
+  }
+}

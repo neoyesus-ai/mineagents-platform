@@ -18,7 +18,7 @@ La visión es que varios agentes especializados colaboren sobre un mismo proyect
 - El dashboard presenta el estado público del coordinator sin exponer escrituras.
 - Blueprints ya valida y compila planos; planner y memory aportarán planificación y memoria sin mezclar responsabilidades.
 
-La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. Todavía no hay conexión a Minecraft, Mineflayer ni LLM.
+La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. Docker Compose incluye un servidor Vanilla 1.21.11 con un mundo desechable separado y un observador Mineflayer real de sólo lectura; todavía no hay movimiento, escrituras reales ni integración con LLM.
 
 ## Arquitectura prevista
 
@@ -26,6 +26,7 @@ La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. 
 - `sdk/`: contratos públicos y utilidades compartidas para agentes.
 - `observability/`: logs JSON y métricas HTTP compartidas.
 - `minecraft-adapter/`: acceso seguro y simulable a capacidades de Minecraft.
+- `minecraft-driver-mineflayer/`: conexión real read-only y heartbeat del observador.
 - `agents/collector/`: agente recolector.
 - `agents/builder/`: agente constructor.
 - `agents/explorer/`: agente explorador.
@@ -85,7 +86,9 @@ El SDK es independiente de HTTP, SQLite y Minecraft. El coordinator lo consume c
 
 `@mineagents/minecraft-adapter` define una interfaz independiente del cliente real y un guardián que aplica regiones permitidas, límites de movimiento, listas de bloques y autorizaciones externas con caducidad y cuota. `createReadOnlyMinecraftPolicy` desactiva movimiento y escrituras por defecto.
 
-Todavía no existe un driver de Mineflayer ni conexión a un mundo. Las pruebas usan drivers simulados y no leen ni modifican datos de Minecraft.
+`@mineagents/mineflayer-driver` conecta un observador real al servidor 1.21.11, expone estado e inspección de bloques cargados y registra heartbeats en el coordinator. El driver rechaza movimiento, colocación y rotura de bloques; esas operaciones siguen probándose sólo con drivers simulados.
+
+El contenedor `mineflayer-observer` usa una identidad offline de desarrollo y se conecta exclusivamente al servicio `minecraft` de Compose.
 
 ## Agente recolector
 
@@ -160,13 +163,19 @@ npm run typecheck
 
 ## Docker Compose
 
-`docker-compose.yml` integra el coordinator, su volumen SQLite y el dashboard de sólo lectura.
+`docker-compose.yml` integra el coordinator, su volumen SQLite, el dashboard de sólo lectura y un servidor Minecraft Java Edition 1.21.11 para desarrollo. El servidor crea un mundo independiente llamado `mineagents-demo`; no monta ni modifica mundos existentes.
 
 ```bash
 docker compose up --build
 ```
 
-Coordinator queda disponible en `http://localhost:3000` y dashboard en `http://localhost:3001`.
+Servicios disponibles:
+
+- Minecraft Java 1.21.11: `127.0.0.1:25566` desde el host y `minecraft:25565` desde otros contenedores.
+- Coordinator: `http://localhost:3000`.
+- Dashboard: `http://localhost:3001`.
+El servidor de desarrollo usa modo creativo y dificultad pacífica. `online-mode` está desactivado exclusivamente para permitir agentes locales sin credenciales; el puerto se limita a loopback y no debe exponerse a Internet. La configuración completa está en [docs/minecraft-server.md](docs/minecraft-server.md).
+
 
 ## Roadmap inicial
 
@@ -174,7 +183,7 @@ Coordinator queda disponible en `http://localhost:3000` y dashboard en `http://l
 2. Terminar contratos del SDK y de tareas compartidas.
 3. Evolucionar la cola persistente y el manejo de progreso.
 4. Implementar los agentes recolector y constructor sobre límites seguros.
-5. Añadir un driver real de Minecraft en una fase controlada y sobre un mundo desechable.
+5. Ampliar el driver real con movimiento y escrituras controladas sobre el mundo desechable.
 6. Crear dashboard, métricas y despliegue reproducible.
 
 Fuera del MVP inicial quedan la integración con LLM, la economía entre agentes, las personalidades complejas y la búsqueda de imágenes.
@@ -184,6 +193,7 @@ Fuera del MVP inicial quedan la integración con LLM, la economía entre agentes
 - [Arquitectura](docs/architecture.md)
 - [Dashboard](docs/dashboard.md)
 - [Observabilidad](docs/observability.md)
+- [Servidor Minecraft de desarrollo](docs/minecraft-server.md)
 - [Visión](docs/vision.md)
 - [Roadmap](docs/roadmap.md)
 

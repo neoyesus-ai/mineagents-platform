@@ -1,6 +1,55 @@
 name: mineagents-platform
 
 services:
+  minecraft:
+    image: itzg/minecraft-server:2026.5.3-java21
+    environment:
+      EULA: "TRUE"
+      TYPE: VANILLA
+      VERSION: "${MINECRAFT_VERSION:-1.21.11}"
+      ONLINE_MODE: "FALSE"
+      MODE: creative
+      DIFFICULTY: peaceful
+      MAX_PLAYERS: "${MINECRAFT_MAX_PLAYERS:-4}"
+      MEMORY: "${MINECRAFT_MEMORY:-2G}"
+      LEVEL: mineagents-demo
+      MOTD: MineAgents disposable development world
+      SPAWN_PROTECTION: "0"
+      ENABLE_COMMAND_BLOCK: "FALSE"
+      ENABLE_RCON: "FALSE"
+      VIEW_DISTANCE: "6"
+      SIMULATION_DISTANCE: "4"
+    ports:
+      - "127.0.0.1:${MINECRAFT_PORT:-25566}:25565"
+    volumes:
+      - minecraft-demo-data:/data
+    healthcheck:
+      test: ["CMD", "mc-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 90s
+    tty: true
+    stdin_open: true
+
+  mineflayer-observer:
+    build:
+      context: .
+      dockerfile: minecraft-driver-mineflayer/Dockerfile
+    environment:
+      MINECRAFT_HOST: minecraft
+      MINECRAFT_PORT: "25565"
+      MINECRAFT_VERSION: "${MINECRAFT_VERSION:-1.21.11}"
+      MINECRAFT_USERNAME: "${MINECRAFT_USERNAME:-MineObserver}"
+      COORDINATOR_URL: http://coordinator:3000
+      AGENT_HEARTBEAT_INTERVAL_MS: "15000"
+    depends_on:
+      minecraft:
+        condition: service_healthy
+      coordinator:
+        condition: service_started
+    restart: unless-stopped
+
   coordinator:
     build:
       context: .
@@ -28,3 +77,4 @@ services:
 
 volumes:
   coordinator-data: {}
+  minecraft-demo-data: {}
