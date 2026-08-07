@@ -20,6 +20,7 @@ const requiredPaths = [
   "docs/architecture.md",
   "docs/dashboard.md",
   "docs/observability.md",
+  "docs/decisions/0010-bounded-mineflayer-movement.md",
   "docs/minecraft-server.md",
   "docs/decisions/0008-disposable-minecraft-server.md",
   "docs/decisions/0009-read-only-mineflayer-driver.md",
@@ -61,6 +62,20 @@ test("root manifest exposes every validation command", async () => {
   }
 });
 
+test("root manifest pins the audited uuid compatibility override", async () => {
+  const manifest = JSON.parse(await readFile("package.json", "utf8"));
+
+  assert.equal(manifest.overrides?.uuid, "11.1.1");
+});
+
+test("Mineflayer driver exposes the reproducible movement smoke command", async () => {
+  const manifest = JSON.parse(
+    await readFile("minecraft-driver-mineflayer/package.json", "utf8"),
+  );
+
+  assert.equal(manifest.scripts?.["smoke:movement"], "node dist/movement-smoke-cli.js");
+});
+
 test("compose pins an isolated Minecraft development server", async () => {
   const compose = await readFile("docker-compose.yml", "utf8");
 
@@ -68,7 +83,7 @@ test("compose pins an isolated Minecraft development server", async () => {
   assert.match(compose, /VERSION: "\$\{MINECRAFT_VERSION:-1\.21\.11\}"/);
   assert.match(
     compose,
-    /"127\.0\.0\.1:\$\{MINECRAFT_PORT:-25566\}:25565"/,
+    /"127\.0\.0\.1:\$\{MINECRAFT_PORT:-25565\}:25565"/,
   );
   assert.match(compose, /minecraft-demo-data:\/data/);
   assert.match(compose, /ONLINE_MODE: "FALSE"/);

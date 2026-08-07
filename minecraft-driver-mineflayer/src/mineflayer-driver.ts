@@ -7,8 +7,12 @@ import type {
   WorldRegion,
 } from "@mineagents/minecraft-adapter";
 import { createBot, type Bot } from "mineflayer";
+import pathfinderPackage from "mineflayer-pathfinder";
 import { Vec3 } from "vec3";
+import { BoundedMovementController } from "./bounded-movement.js";
 import { MineflayerDriverError } from "./errors.js";
+const { pathfinder } = pathfinderPackage;
+
 
 export interface MineflayerConnectionOptions {
   host: string;
@@ -17,10 +21,12 @@ export interface MineflayerConnectionOptions {
   version: string;
   connectTimeoutMs?: number;
   chunksTimeoutMs?: number;
+  movementTimeoutMs?: number;
 }
 
 export interface MineflayerConnectionDependencies {
   createBot: typeof createBot;
+  pathfinderPlugin?: typeof pathfinder;
 }
 
 const namespacedDimension = (dimension: string): string =>
@@ -118,15 +124,30 @@ const validateConnectionOptions = (options: MineflayerConnectionOptions): void =
       "Mineflayer requires a host, username, version and valid TCP port.",
     );
   }
+
+  if (
+    options.movementTimeoutMs !== undefined &&
+    (!Number.isSafeInteger(options.movementTimeoutMs) || options.movementTimeoutMs < 1)
+  ) {
+    throw new MineflayerDriverError(
+      "INVALID_CONFIG",
+      "Mineflayer movement timeout must be a positive safe integer.",
+    );
+  }
 };
 
 export class MineflayerDriver implements MinecraftDriver {
   private connected = true;
   private lastPosition: WorldPosition;
   private readonly disconnectPromise: Promise<string>;
+  private readonly movementController: BoundedMovementController;
 
-  constructor(private readonly bot: Bot) {
+  constructor(
+    private readonly bot: Bot,
+    movementTimeoutMs = 30_000,
+  ) {
     this.lastPosition = this.readPosition();
+    this.movementController = new BoundedMovementController(bot, movementTimeoutMs);
     this.disconnectPromise = new Promise((resolve) => {
       bot.once("end", (reason) => {
         this.connected = false;
@@ -175,9 +196,9 @@ export class MineflayerDriver implements MinecraftDriver {
     target: WorldPosition,
     allowedRegions: readonly WorldRegion[],
   ): Promise<void> {
-    void target;
-    void allowedRegions;
-    this.unsupported("Movement");
+    this.assertConnected();
+    await this.movementController.moveTo(target, allowedRegions);
+    this.lastPosition = this.readPosition();
   }
 
   async placeBlock(
@@ -206,6 +227,7 @@ export class MineflayerDriver implements MinecraftDriver {
 
   close(reason = "MineAgents observer shutdown"): void {
     if (this.connected) {
+      this.movementController.stop();
       this.bot.quit(reason);
     }
   }
@@ -230,7 +252,7 @@ export class MineflayerDriver implements MinecraftDriver {
     this.assertConnected();
     throw new MineflayerDriverError(
       "UNSUPPORTED_OPERATION",
-      `${operation} is disabled in the read-only Mineflayer driver.`,
+      `${operation} is disabled because Mineflayer world writes are not enabled.`,
     );
   }
 }
@@ -242,6 +264,7 @@ export const connectMineflayerDriver = async (
   validateConnectionOptions(options);
   const connectTimeoutMs = options.connectTimeoutMs ?? 30_000;
   const chunksTimeoutMs = options.chunksTimeoutMs ?? 30_000;
+  const movementTimeoutMs = options.movementTimeoutMs ?? 30_000;
 
   const bot = dependencies.createBot({
     host: options.host,
@@ -254,13 +277,14 @@ export const connectMineflayerDriver = async (
   });
 
   try {
+    bot.loadPlugin(dependencies.pathfinderPlugin ?? pathfinder);
     await waitForSpawn(bot, connectTimeoutMs);
     await withTimeout(
       bot.waitForChunksToLoad(),
       chunksTimeoutMs,
       "Timed out while waiting for Mineflayer chunks to load.",
     );
-    return new MineflayerDriver(bot);
+    return new MineflayerDriver(bot, movementTimeoutMs);
   } catch (error) {
     bot.end("MineAgents connection failed");
     if (error instanceof MineflayerDriverError) {

@@ -9,6 +9,7 @@ export interface MineflayerObserverConfig {
   heartbeatIntervalMs: number;
   connectTimeoutMs: number;
   chunksTimeoutMs: number;
+  movementTimeoutMs: number;
 }
 
 const requiredText = (
@@ -101,5 +102,12 @@ export const parseMineflayerObserverConfig = (
     "MINECRAFT_CHUNKS_TIMEOUT_MS",
     1_000,
     120_000,
+  ),
+  movementTimeoutMs: integerInRange(
+    environment.MINECRAFT_MOVEMENT_TIMEOUT_MS,
+    30_000,
+    "MINECRAFT_MOVEMENT_TIMEOUT_MS",
+    1_000,
+    300_000,
   ),
 });

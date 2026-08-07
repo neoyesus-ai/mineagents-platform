@@ -18,7 +18,7 @@ La visión es que varios agentes especializados colaboren sobre un mismo proyect
 - El dashboard presenta el estado público del coordinator sin exponer escrituras.
 - Blueprints ya valida y compila planos; planner y memory aportarán planificación y memoria sin mezclar responsabilidades.
 
-La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. Docker Compose incluye un servidor Vanilla 1.21.11 con un mundo desechable separado y un observador Mineflayer real de sólo lectura; todavía no hay movimiento, escrituras reales ni integración con LLM.
+La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. Docker Compose incluye un servidor Vanilla 1.21.11 con un mundo desechable separado y un observador Mineflayer que no recibe órdenes. El driver real ya admite movimiento acotado, pero todavía no hay escrituras reales ni integración con LLM.
 
 ## Arquitectura prevista
 
@@ -26,7 +26,7 @@ La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. 
 - `sdk/`: contratos públicos y utilidades compartidas para agentes.
 - `observability/`: logs JSON y métricas HTTP compartidas.
 - `minecraft-adapter/`: acceso seguro y simulable a capacidades de Minecraft.
-- `minecraft-driver-mineflayer/`: conexión real read-only y heartbeat del observador.
+- `minecraft-driver-mineflayer/`: conexión real, movimiento acotado y heartbeat del observador.
 - `agents/collector/`: agente recolector.
 - `agents/builder/`: agente constructor.
 - `agents/explorer/`: agente explorador.
@@ -86,7 +86,7 @@ El SDK es independiente de HTTP, SQLite y Minecraft. El coordinator lo consume c
 
 `@mineagents/minecraft-adapter` define una interfaz independiente del cliente real y un guardián que aplica regiones permitidas, límites de movimiento, listas de bloques y autorizaciones externas con caducidad y cuota. `createReadOnlyMinecraftPolicy` desactiva movimiento y escrituras por defecto.
 
-`@mineagents/mineflayer-driver` conecta un observador real al servidor 1.21.11, expone estado e inspección de bloques cargados y registra heartbeats en el coordinator. El driver rechaza movimiento, colocación y rotura de bloques; esas operaciones siguen probándose sólo con drivers simulados.
+`@mineagents/mineflayer-driver` conecta un observador real al servidor 1.21.11, expone estado e inspección de bloques cargados y registra heartbeats en el coordinator. Su movimiento usa pathfinding con regiones explícitas, timeout, vigilancia en ejecución y un perfil que impide excavar, colocar, abrir puertas o usar andamiaje. La colocación y rotura de bloques siguen rechazadas.
 
 El contenedor `mineflayer-observer` usa una identidad offline de desarrollo y se conecta exclusivamente al servicio `minecraft` de Compose.
 
@@ -171,7 +171,7 @@ docker compose up --build
 
 Servicios disponibles:
 
-- Minecraft Java 1.21.11: `127.0.0.1:25566` desde el host y `minecraft:25565` desde otros contenedores.
+- Minecraft Java 1.21.11: `127.0.0.1:25565` desde el host y `minecraft:25565` desde otros contenedores.
 - Coordinator: `http://localhost:3000`.
 - Dashboard: `http://localhost:3001`.
 El servidor de desarrollo usa modo creativo y dificultad pacífica. `online-mode` está desactivado exclusivamente para permitir agentes locales sin credenciales; el puerto se limita a loopback y no debe exponerse a Internet. La configuración completa está en [docs/minecraft-server.md](docs/minecraft-server.md).
@@ -183,7 +183,7 @@ El servidor de desarrollo usa modo creativo y dificultad pacífica. `online-mode
 2. Terminar contratos del SDK y de tareas compartidas.
 3. Evolucionar la cola persistente y el manejo de progreso.
 4. Implementar los agentes recolector y constructor sobre límites seguros.
-5. Ampliar el driver real con movimiento y escrituras controladas sobre el mundo desechable.
+5. Validar el movimiento acotado y añadir escrituras autorizadas sobre el mundo desechable.
 6. Crear dashboard, métricas y despliegue reproducible.
 
 Fuera del MVP inicial quedan la integración con LLM, la economía entre agentes, las personalidades complejas y la búsqueda de imágenes.

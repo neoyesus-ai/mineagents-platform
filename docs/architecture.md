@@ -2,7 +2,7 @@
 
 ## Estado actual
 
-MineAgents Platform es un monorepositorio TypeScript con npm workspaces. La base incluye un `coordinator` funcional con API REST mínima y persistencia en SQLite, un dashboard operativo de sólo lectura, observabilidad HTTP compartida, un SDK con contratos públicos, un adaptador seguro, un driver Mineflayer read-only y un formato validado de blueprints. Docker Compose aporta un servidor Vanilla desechable y conecta un observador real; todavía no existen movimiento o escrituras reales ni lógica de agentes LLM.
+MineAgents Platform es un monorepositorio TypeScript con npm workspaces. La base incluye un `coordinator` funcional con API REST mínima y persistencia en SQLite, un dashboard operativo de sólo lectura, observabilidad HTTP compartida, un SDK con contratos públicos, un adaptador seguro, un driver Mineflayer con movimiento acotado y un formato validado de blueprints. Docker Compose aporta un servidor Vanilla desechable y conecta un observador real; todavía no existen escrituras reales ni lógica de agentes LLM.
 
 ## Mapa de componentes
 
@@ -57,7 +57,7 @@ La decisión completa y sus consecuencias se documentan en [ADR 0001](decisions/
 
 ```text
 agents ──► SafeMinecraftAdapter ──► MinecraftDriver ──► Minecraft
-                 ▲                    (real read-only)
+                 ▲              (movimiento acotado, sin escrituras)
                  │
           policy + verifier
 ```
@@ -66,23 +66,23 @@ agents ──► SafeMinecraftAdapter ──► MinecraftDriver ──► Minecr
 
 La decisión de seguridad completa se documenta en [ADR 0002](decisions/0002-safe-minecraft-adapter.md).
 
-## Driver Mineflayer read-only
+## Driver Mineflayer con movimiento acotado
 
 ```text
 coordinator ◄── heartbeat ── mineflayer-observer ──► minecraft:25565
                                   │
-                                  └── MineflayerDriver ──► estado + inspección
+                                  └── MineflayerDriver ──► estado + inspección + movimiento acotado
 ```
 
-`@mineagents/mineflayer-driver` implementa el límite `MinecraftDriver` para estado e inspección de bloques cargados. Normaliza dimensiones y nombres de bloque, no fuerza la carga de chunks remotos y rechaza explícitamente movimiento, colocación y rotura. Su proceso observador usa autenticación offline sólo dentro del entorno local y mantiene su registro en el coordinator.
+`@mineagents/mineflayer-driver` implementa el límite `MinecraftDriver` para estado, inspección de bloques cargados y movimiento. Cada movimiento exige regiones explícitas que contengan la posición inicial y el destino. El pathfinder excluye pasos fuera de ellas, una vigilancia detiene cualquier salida durante la ejecución y un timeout acota la operación. El perfil no excava, coloca bloques, abre puertas, hace parkour ni usa andamiaje.
 
-Esta separación permite verificar protocolo, ciclo de conexión y observabilidad antes de introducir pathfinding o escrituras. La decisión se documenta en [ADR 0009](decisions/0009-read-only-mineflayer-driver.md).
+La colocación y rotura continúan rechazadas. El proceso observador usa autenticación offline sólo dentro del entorno local, mantiene su registro en el coordinator y no expone órdenes de movimiento. La introducción inicial del driver se documenta en [ADR 0009](decisions/0009-read-only-mineflayer-driver.md) y el nuevo límite de movimiento en [ADR 0010](decisions/0010-bounded-mineflayer-movement.md).
 
 ## Servidor Minecraft de desarrollo
 
 ```text
 agente en Compose ──► minecraft:25565 ──► mundo mineagents-demo
-cliente en host    ──► 127.0.0.1:25566 ──┘
+cliente en host    ──► 127.0.0.1:25565 ──┘
 ```
 
 Compose fija Minecraft Java Edition 1.21.11 sobre una imagen con Java 21. El mundo vive únicamente en el volumen `minecraft-demo-data`, separado de cualquier instalación o mundo existente. La autenticación online se desactiva sólo para desarrollo local y el puerto publicado se limita a loopback.
@@ -141,7 +141,7 @@ Cada workspace de producto tiene su propio `package.json`, `tsconfig.json` y pun
 - `sdk/` contiene la capa pública de contratos y validación compartida.
 - `observability/` contiene logging JSON y métricas HTTP sin dependencias de dominio.
 - `minecraft-adapter/` contiene el límite seguro y simulable de acceso al mundo.
-- `minecraft-driver-mineflayer/` implementa la conexión real read-only y su proceso observador.
+- `minecraft-driver-mineflayer/` implementa conexión real, inspección y movimiento acotado, además de su proceso observador.
 - `agents/` separa implementaciones por rol.
 - `dashboard/` contiene el cliente HTTP, la vista y su servidor de sólo lectura.
 - `planner/` y `memory/` quedan como módulos independientes.

@@ -10,7 +10,7 @@ El adaptador y los agentes se prueban actualmente con drivers simulados. Para im
 
 ## Decisión
 
-Docker Compose ejecutará Minecraft Java Edition 1.21.11 Vanilla sobre una imagen Java 21 versionada. Creará el mundo `mineagents-demo` en un volumen Docker exclusivo y publicará el protocolo únicamente en `127.0.0.1:25566`.
+Docker Compose ejecutará Minecraft Java Edition 1.21.11 Vanilla sobre una imagen Java 21 versionada. Creará el mundo `mineagents-demo` en un volumen Docker exclusivo y publicará el protocolo únicamente en `127.0.0.1:25565`.
 
 Los servicios del mismo Compose usarán el nombre interno `minecraft` y el puerto `25565`. `online-mode` permanecerá desactivado sólo en este entorno local para permitir identidades de agentes sin credenciales. RCON y command blocks estarán desactivados.
 

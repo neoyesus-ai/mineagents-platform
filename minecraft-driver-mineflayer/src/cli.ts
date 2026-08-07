@@ -56,6 +56,7 @@ const main = async (): Promise<void> => {
     version: config.version,
     connectTimeoutMs: config.connectTimeoutMs,
     chunksTimeoutMs: config.chunksTimeoutMs,
+    movementTimeoutMs: config.movementTimeoutMs,
   });
 
   const state = await driver.getState();

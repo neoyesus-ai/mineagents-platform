@@ -9,7 +9,7 @@ Docker Compose incluye un servidor Vanilla para probar posteriormente la conexi�
 - Tipo de servidor: Vanilla.
 - Mundo: `mineagents-demo` en el volumen `minecraft-demo-data`.
 - Juego: creativo, dificultad pacífica.
-- Red desde el host: `127.0.0.1:25566`.
+- Red desde el host: `127.0.0.1:25565`.
 - Red desde Compose: `minecraft:25565`.
 - RCON y command blocks: desactivados.
 
@@ -31,7 +31,7 @@ Para seguir el arranque:
 docker compose logs -f minecraft
 ```
 
-Para conectarse con Minecraft Java Edition, añadir un servidor con dirección `127.0.0.1:25566` y usar la versión 1.21.11 del cliente.
+Para conectarse con Minecraft Java Edition, añadir un servidor con dirección `127.0.0.1:25565` y usar la versión 1.21.11 del cliente.
 
 ## Conexión de agentes
 
@@ -47,7 +47,25 @@ version: 1.21.11
 
 Un agente ejecutado directamente en el host debe usar `127.0.0.1` y el puerto configurado por `MINECRAFT_PORT`.
 
-La presencia del servidor no concede permisos de escritura. El driver actual sólo permite estado e inspección; las futuras acciones que modifiquen bloques deberán atravesar `SafeMinecraftAdapter` con una política limitada y autorización externa.
+## Smoke test de movimiento
+
+Con el servidor desechable sano, compilar el driver y ejecutar:
+
+```bash
+npm run build --workspace @mineagents/mineflayer-driver
+MINECRAFT_HOST=127.0.0.1 \
+MINECRAFT_PORT=25565 \
+MINECRAFT_USERNAME=MineSmoke \
+npm run smoke:movement --workspace @mineagents/mineflayer-driver
+```
+
+La prueba usa una identidad efímera, encuentra un destino transitable cerca del spawn, se desplaza dentro de una región acotada y regresa al origen. Compara los bloques del origen y del destino antes y después; cualquier cambio de bloque hace fallar el proceso.
+
+La ejecución verificada alcanzó el destino al primer intento, regresó exactamente al origen y produjo `blocksUnchanged: true`. El servidor permaneció sano y el observador se reconectó correctamente tras reconstruir su imagen.
+
+Esta prueba valida conexión, inspección y movimiento reales. No marca completa la fase 3: todavía faltan las escrituras autorizadas y el flujo integral de recolector y constructor.
+
+La presencia del servidor no concede permisos de escritura. El driver permite movimiento únicamente cuando recibe regiones explícitas y mantiene colocación y rotura deshabilitadas. Las futuras acciones que modifiquen bloques deberán atravesar `SafeMinecraftAdapter` con una política limitada y autorización externa.
 
 ## Seguridad y persistencia
 

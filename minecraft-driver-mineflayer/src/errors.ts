@@ -4,6 +4,10 @@ export type MineflayerDriverErrorCode =
   | "NOT_CONNECTED"
   | "DIMENSION_MISMATCH"
   | "CHUNK_NOT_LOADED"
+  | "INVALID_MOVEMENT_SCOPE"
+  | "OUTSIDE_ALLOWED_REGION"
+  | "MOVEMENT_IN_PROGRESS"
+  | "MOVEMENT_FAILED"
   | "UNSUPPORTED_OPERATION";
 
 export class MineflayerDriverError extends Error {

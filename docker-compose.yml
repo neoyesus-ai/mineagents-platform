@@ -20,7 +20,7 @@ services:
       VIEW_DISTANCE: "6"
       SIMULATION_DISTANCE: "4"
     ports:
-      - "127.0.0.1:${MINECRAFT_PORT:-25566}:25565"
+      - "127.0.0.1:${MINECRAFT_PORT:-25565}:25565"
     volumes:
       - minecraft-demo-data:/data
     healthcheck:
@@ -41,6 +41,7 @@ services:
       MINECRAFT_PORT: "25565"
       MINECRAFT_VERSION: "${MINECRAFT_VERSION:-1.21.11}"
       MINECRAFT_USERNAME: "${MINECRAFT_USERNAME:-MineObserver}"
+      MINECRAFT_MOVEMENT_TIMEOUT_MS: "${MINECRAFT_MOVEMENT_TIMEOUT_MS:-30000}"
       COORDINATOR_URL: http://coordinator:3000
       AGENT_HEARTBEAT_INTERVAL_MS: "15000"
     depends_on:
