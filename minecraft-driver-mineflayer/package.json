@@ -13,6 +13,7 @@
     "@mineagents/agent-collector": "0.1.0",
     "@mineagents/minecraft-adapter": "0.1.0",
     "@mineagents/observability": "0.1.0",
+    "@mineagents/sdk": "0.1.0",
     "mineflayer": "4.37.1",
     "mineflayer-pathfinder": "2.4.5",
     "vec3": "0.2.0"
@@ -22,6 +23,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "smoke:agents": "node dist/agent-smoke-cli.js",
     "smoke:movement": "node dist/movement-smoke-cli.js",
-    "start": "node dist/cli.js"
+    "start": "node dist/cli.js",
+    "start:collector": "node dist/collector-worker-cli.js"
   }
 }
