@@ -171,6 +171,20 @@ export class MineflayerDriver implements MinecraftDriver {
     };
   }
 
+  hasInventoryItem(blockName: string): boolean {
+    this.assertConnected();
+    if (!/^[a-z0-9_.-]+:[a-z0-9_./-]+$/.test(blockName)) {
+      throw new MineflayerDriverError(
+        "INVALID_WRITE_REQUEST",
+        "Inventory checks require a namespaced Minecraft block identifier.",
+      );
+    }
+
+    return this.bot.inventory
+      .items()
+      .some((item) => namespacedBlock(item.name) === blockName);
+  }
+
   async inspectBlock(position: WorldPosition): Promise<MinecraftBlockSnapshot> {
     this.assertConnected();
     const currentDimension = namespacedDimension(this.bot.game.dimension);

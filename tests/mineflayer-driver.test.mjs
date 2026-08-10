@@ -121,6 +121,8 @@ test("bounded writes place and break exact blocks with postcondition checks", as
   world.setBlock({ ...target, y: target.y - 1 }, "stone");
   const driver = new MineflayerDriver(world.bot);
 
+  assert.equal(driver.hasInventoryItem("minecraft:oak_log"), true);
+  assert.equal(driver.hasInventoryItem("minecraft:dirt"), false);
   await driver.placeBlock(target, "minecraft:oak_log", ["minecraft:air"]);
   assert.equal(world.blockNameAt(target), "oak_log");
   assert.equal(world.bot.equipped.item.name, "oak_log");
@@ -138,6 +140,86 @@ test("bounded writes place and break exact blocks with postcondition checks", as
   assert.equal(world.blockNameAt(target), "air");
   assert.equal(world.bot.digCall.forceLook, true);
   assert.equal(world.bot.digCall.digFace, "raycast");
+});
+
+test("bounded writes tolerate delayed server postconditions", async () => {
+  const target = {
+    dimension: "minecraft:overworld",
+    x: 2,
+    y: 64,
+    z: 0,
+  };
+  const world = createWritableMineflayerBot({
+    items: [{ name: "oak_log" }],
+    async onPlace({ referenceBlock, faceVector, setBlock }) {
+      globalThis.setTimeout(() => {
+        setBlock(referenceBlock.position.plus(faceVector), "oak_log");
+      }, 50);
+    },
+  });
+  world.setBlock(target, "air");
+  world.setBlock({ ...target, y: target.y - 1 }, "stone");
+
+  await new MineflayerDriver(world.bot).placeBlock(
+    target,
+    "minecraft:oak_log",
+    ["minecraft:air"],
+  );
+  assert.equal(world.blockNameAt(target), "oak_log");
+});
+
+test("bounded writes accept exact postconditions after Mineflayer errors", async () => {
+  const target = {
+    dimension: "minecraft:overworld",
+    x: 2,
+    y: 64,
+    z: 0,
+  };
+  const world = createWritableMineflayerBot({
+    items: [{ name: "oak_log" }],
+    async onPlace({ bot, referenceBlock, faceVector, setBlock }) {
+      setBlock(referenceBlock.position.plus(faceVector), bot.heldItem.name);
+      throw new Error("simulated event timeout after placement");
+    },
+    async onDig({ block, setBlock }) {
+      setBlock(block.position, "air");
+      throw new Error("simulated event timeout after breaking");
+    },
+  });
+  world.setBlock(target, "air");
+  world.setBlock({ ...target, y: target.y - 1 }, "stone");
+  const driver = new MineflayerDriver(world.bot);
+
+  await driver.placeBlock(target, "minecraft:oak_log", ["minecraft:air"]);
+  assert.equal(world.blockNameAt(target), "oak_log");
+  await driver.breakBlock(target, "minecraft:oak_log");
+  assert.equal(world.blockNameAt(target), "air");
+});
+
+test("bounded writes preserve Mineflayer errors when postconditions fail", async () => {
+  const target = {
+    dimension: "minecraft:overworld",
+    x: 2,
+    y: 64,
+    z: 0,
+  };
+  const world = createWritableMineflayerBot({
+    items: [{ name: "oak_log" }],
+    async onPlace() {
+      throw new Error("simulated placement rejection");
+    },
+  });
+  world.setBlock(target, "air");
+  world.setBlock({ ...target, y: target.y - 1 }, "stone");
+
+  await assert.rejects(
+    new MineflayerDriver(world.bot).placeBlock(
+      target,
+      "minecraft:oak_log",
+      ["minecraft:air"],
+    ),
+    hasDriverCode("WRITE_FAILED"),
+  );
 });
 
 test("bounded writes reject invalid preconditions, inventory and reach", async () => {

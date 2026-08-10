@@ -9,7 +9,9 @@ import { createCoordinatorServer } from "../coordinator/dist/index.js";
 const listen = async (server) => {
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
+
   const address = server.address();
+
   if (!address || typeof address === "string") {
     throw new Error("Expected an IPv4 server address.");
   }
@@ -31,140 +33,483 @@ const close = async (server) => {
 };
 
 test("coordinator persists and serves the main task lifecycle", async (t) => {
-  const tempDir = await mkdtemp(join(tmpdir(), "mineagents-coordinator-"));
+  const tempDir = await mkdtemp(
+    join(tmpdir(), "mineagents-coordinator-"),
+  );
+
   const logs = [];
+
   const server = createCoordinatorServer({
     dbPath: join(tempDir, "coordinator.sqlite"),
     logger: {
-      info: (event, fields) => logs.push({ level: "info", event, ...fields }),
-      error: (event, fields) => logs.push({ level: "error", event, ...fields }),
+      info: (event, fields) =>
+        logs.push({
+          level: "info",
+          event,
+          ...fields,
+        }),
+
+      error: (event, fields) =>
+        logs.push({
+          level: "error",
+          event,
+          ...fields,
+        }),
     },
   });
+
   const port = await listen(server);
   const baseUrl = `http://127.0.0.1:${port}`;
 
   t.after(async () => {
     await close(server);
-    await rm(tempDir, { recursive: true, force: true });
+
+    await rm(tempDir, {
+      recursive: true,
+      force: true,
+    });
   });
 
-  const healthResponse = await globalThis.fetch(`${baseUrl}/health`);
-  assert.equal(healthResponse.status, 200);
-  assert.match(healthResponse.headers.get("x-request-id"), /^[0-9a-f-]{36}$/);
-  const health = await healthResponse.json();
-  assert.equal(health.status, "ok");
+  const healthResponse = await globalThis.fetch(
+    `${baseUrl}/health`,
+  );
 
-  const projectResponse = await globalThis.fetch(`${baseUrl}/projects`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name: "Starter base", description: "Initial staging project" }),
-  });
-  assert.equal(projectResponse.status, 201);
-  const { project } = await projectResponse.json();
-
-  const agentResponse = await globalThis.fetch(`${baseUrl}/agents/heartbeat`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name: "collector-01", role: "collector" }),
-  });
-  assert.equal(agentResponse.status, 200);
-  const { agent } = await agentResponse.json();
-
-  const taskResponse = await globalThis.fetch(`${baseUrl}/tasks`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      title: "Gather starter resources",
-      description: "Prepare the first build area",
-      projectId: project.id,
-    }),
-  });
-  assert.equal(taskResponse.status, 201);
-  const createdTaskBody = await taskResponse.json();
-  assert.equal(createdTaskBody.task.status, "pending");
-
-  const claimResponse = await globalThis.fetch(`${baseUrl}/tasks/claim`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ agentId: agent.id }),
-  });
-  assert.equal(claimResponse.status, 200);
-  const claimedBody = await claimResponse.json();
-  assert.equal(claimedBody.task.status, "assigned");
-  assert.equal(claimedBody.task.assignedAgentId, agent.id);
-
-  const startResponse = await globalThis.fetch(`${baseUrl}/tasks/${claimedBody.task.id}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ status: "running" }),
-  });
-  assert.equal(startResponse.status, 200);
-  const startedBody = await startResponse.json();
-  assert.equal(startedBody.task.status, "running");
-  assert.equal(typeof startedBody.task.startedAt, "string");
-
-  const patchResponse = await globalThis.fetch(`${baseUrl}/tasks/${claimedBody.task.id}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ status: "completed" }),
-  });
-  assert.equal(patchResponse.status, 200);
-  const patchedBody = await patchResponse.json();
-  assert.equal(patchedBody.task.status, "completed");
-
-  const invalidTransitionResponse = await globalThis.fetch(`${baseUrl}/tasks/${claimedBody.task.id}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ status: "running" }),
-  });
-  assert.equal(invalidTransitionResponse.status, 409);
-
-  const tasksResponse = await globalThis.fetch(`${baseUrl}/tasks`);
-  assert.equal(tasksResponse.status, 200);
-  const tasks = await tasksResponse.json();
-  assert.equal(tasks.tasks.length, 1);
-  assert.equal(tasks.tasks[0].status, "completed");
-
-  const metricsResponse = await globalThis.fetch(`${baseUrl}/metrics`);
-  assert.equal(metricsResponse.status, 200);
-  assert.match(metricsResponse.headers.get("content-type"), /text\/plain/);
-  const metrics = await metricsResponse.text();
-  assert.match(metrics, /mineagents_coordinator_tasks\{service="coordinator"} 1/);
-  assert.match(metrics, /route="\/tasks\/:id"/);
-  assert.doesNotMatch(metrics, new RegExp(claimedBody.task.id));
   assert.equal(
-    logs.some((entry) => entry.event === "http.request" && entry.route === "/tasks/:id"),
+    healthResponse.status,
+    200,
+  );
+
+  assert.match(
+    healthResponse.headers.get("x-request-id"),
+    /^[0-9a-f-]{36}$/,
+  );
+
+  const health =
+    await healthResponse.json();
+
+  assert.equal(
+    health.status,
+    "ok",
+  );
+
+  const projectResponse =
+    await globalThis.fetch(
+      `${baseUrl}/projects`,
+      {
+        method: "POST",
+
+        headers: {
+          "content-type":
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          name: "Starter base",
+          description:
+            "Initial staging project",
+        }),
+      },
+    );
+
+  assert.equal(
+    projectResponse.status,
+    201,
+  );
+
+  const { project } =
+    await projectResponse.json();
+
+  const agentResponse =
+    await globalThis.fetch(
+      `${baseUrl}/agents/heartbeat`,
+      {
+        method: "POST",
+
+        headers: {
+          "content-type":
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          name: "collector-01",
+          role: "collector",
+        }),
+      },
+    );
+
+  assert.equal(
+    agentResponse.status,
+    200,
+  );
+
+  const { agent } =
+    await agentResponse.json();
+
+  const taskResponse =
+    await globalThis.fetch(
+      `${baseUrl}/tasks`,
+      {
+        method: "POST",
+
+        headers: {
+          "content-type":
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          title:
+            "Gather starter resources",
+
+          description:
+            "Prepare the first build area",
+
+          projectId:
+            project.id,
+
+          kind:
+            "collect-blocks",
+
+          requiredRole:
+            "collector",
+
+          payload: {
+            blockName:
+              "minecraft:oak_log",
+
+            quantity: 2,
+          },
+        }),
+      },
+    );
+
+  assert.equal(
+    taskResponse.status,
+    201,
+  );
+
+  const createdTaskBody =
+    await taskResponse.json();
+
+  assert.equal(
+    createdTaskBody.task.status,
+    "pending",
+  );
+
+  assert.equal(
+    createdTaskBody.task.kind,
+    "collect-blocks",
+  );
+
+  assert.equal(
+    createdTaskBody.task.requiredRole,
+    "collector",
+  );
+
+  assert.deepEqual(
+    createdTaskBody.task.payload,
+    {
+      blockName:
+        "minecraft:oak_log",
+
+      quantity: 2,
+    },
+  );
+
+  const claimResponse =
+    await globalThis.fetch(
+      `${baseUrl}/tasks/claim`,
+      {
+        method: "POST",
+
+        headers: {
+          "content-type":
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          agentId:
+            agent.id,
+        }),
+      },
+    );
+
+  assert.equal(
+    claimResponse.status,
+    200,
+  );
+
+  const claimedBody =
+    await claimResponse.json();
+
+  assert.equal(
+    claimedBody.task.status,
+    "assigned",
+  );
+
+  assert.equal(
+    claimedBody.task.assignedAgentId,
+    agent.id,
+  );
+
+  assert.equal(
+    claimedBody.task.requiredRole,
+    "collector",
+  );
+
+  const startResponse =
+    await globalThis.fetch(
+      `${baseUrl}/tasks/${claimedBody.task.id}`,
+      {
+        method: "PATCH",
+
+        headers: {
+          "content-type":
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          status: "running",
+        }),
+      },
+    );
+
+  assert.equal(
+    startResponse.status,
+    200,
+  );
+
+  const startedBody =
+    await startResponse.json();
+
+  assert.equal(
+    startedBody.task.status,
+    "running",
+  );
+
+  assert.equal(
+    typeof startedBody.task.startedAt,
+    "string",
+  );
+
+  const patchResponse =
+    await globalThis.fetch(
+      `${baseUrl}/tasks/${claimedBody.task.id}`,
+      {
+        method: "PATCH",
+
+        headers: {
+          "content-type":
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          status: "completed",
+        }),
+      },
+    );
+
+  assert.equal(
+    patchResponse.status,
+    200,
+  );
+
+  const patchedBody =
+    await patchResponse.json();
+
+  assert.equal(
+    patchedBody.task.status,
+    "completed",
+  );
+
+  const invalidTransitionResponse =
+    await globalThis.fetch(
+      `${baseUrl}/tasks/${claimedBody.task.id}`,
+      {
+        method: "PATCH",
+
+        headers: {
+          "content-type":
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          status: "running",
+        }),
+      },
+    );
+
+  assert.equal(
+    invalidTransitionResponse.status,
+    409,
+  );
+
+  const tasksResponse =
+    await globalThis.fetch(
+      `${baseUrl}/tasks`,
+    );
+
+  assert.equal(
+    tasksResponse.status,
+    200,
+  );
+
+  const tasks =
+    await tasksResponse.json();
+
+  assert.equal(
+    tasks.tasks.length,
+    1,
+  );
+
+  assert.equal(
+    tasks.tasks[0].status,
+    "completed",
+  );
+
+  assert.equal(
+    tasks.tasks[0].kind,
+    "collect-blocks",
+  );
+
+  assert.equal(
+    tasks.tasks[0].requiredRole,
+    "collector",
+  );
+
+  const metricsResponse =
+    await globalThis.fetch(
+      `${baseUrl}/metrics`,
+    );
+
+  assert.equal(
+    metricsResponse.status,
+    200,
+  );
+
+  assert.match(
+    metricsResponse.headers.get(
+      "content-type",
+    ),
+    /text\/plain/,
+  );
+
+  const metrics =
+    await metricsResponse.text();
+
+  assert.match(
+    metrics,
+    /mineagents_coordinator_tasks\{service="coordinator"} 1/,
+  );
+
+  assert.match(
+    metrics,
+    /route="\/tasks\/:id"/,
+  );
+
+  assert.doesNotMatch(
+    metrics,
+    new RegExp(
+      claimedBody.task.id,
+    ),
+  );
+
+  assert.equal(
+    logs.some(
+      (entry) =>
+        entry.event ===
+          "http.request" &&
+        entry.route ===
+          "/tasks/:id",
+    ),
     true,
   );
 });
 
 test("coordinator rejects invalid task payloads", async (t) => {
-  const tempDir = await mkdtemp(join(tmpdir(), "mineagents-coordinator-"));
-  const server = createCoordinatorServer({ dbPath: join(tempDir, "coordinator.sqlite") });
-  const port = await listen(server);
-  const baseUrl = `http://127.0.0.1:${port}`;
+  const tempDir = await mkdtemp(
+    join(tmpdir(), "mineagents-coordinator-"),
+  );
+
+  const server = createCoordinatorServer({
+    dbPath: join(
+      tempDir,
+      "coordinator.sqlite",
+    ),
+  });
+
+  const port =
+    await listen(server);
+
+  const baseUrl =
+    `http://127.0.0.1:${port}`;
 
   t.after(async () => {
     await close(server);
-    await rm(tempDir, { recursive: true, force: true });
+
+    await rm(tempDir, {
+      recursive: true,
+      force: true,
+    });
   });
 
-  const response = await globalThis.fetch(`${baseUrl}/tasks`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ description: "missing title" }),
-  });
+  const response =
+    await globalThis.fetch(
+      `${baseUrl}/tasks`,
+      {
+        method: "POST",
 
-  assert.equal(response.status, 400);
-  const body = await response.json();
-  assert.equal(body.error.code, "VALIDATION_ERROR");
+        headers: {
+          "content-type":
+            "application/json",
+        },
 
-  const invalidPatchResponse = await globalThis.fetch(`${baseUrl}/tasks/missing`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ title: 42 }),
-  });
-  assert.equal(invalidPatchResponse.status, 400);
-  const invalidPatchBody = await invalidPatchResponse.json();
-  assert.equal(invalidPatchBody.error.code, "VALIDATION_ERROR");
+        body: JSON.stringify({
+          description:
+            "missing title",
+        }),
+      },
+    );
+
+  assert.equal(
+    response.status,
+    400,
+  );
+
+  const body =
+    await response.json();
+
+  assert.equal(
+    body.error.code,
+    "VALIDATION_ERROR",
+  );
+
+  const invalidPatchResponse =
+    await globalThis.fetch(
+      `${baseUrl}/tasks/missing`,
+      {
+        method: "PATCH",
+
+        headers: {
+          "content-type":
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          title: 42,
+        }),
+      },
+    );
+
+  assert.equal(
+    invalidPatchResponse.status,
+    400,
+  );
+
+  const invalidPatchBody =
+    await invalidPatchResponse.json();
+
+  assert.equal(
+    invalidPatchBody.error.code,
+    "VALIDATION_ERROR",
+  );
 });

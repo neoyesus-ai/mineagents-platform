@@ -7,6 +7,8 @@ type LoadedBlock = NonNullable<ReturnType<Bot["blockAt"]>>;
 
 const blockNamePattern = /^[a-z0-9_.-]+:[a-z0-9_./-]+$/;
 const placementReach = 5.1;
+const verificationTimeoutMs = 1_000;
+const verificationPollMs = 25;
 
 const namespacedDimension = (dimension: string): string =>
   dimension.includes(":") ? dimension : `minecraft:${dimension}`;
@@ -82,18 +84,25 @@ export class BoundedWriteController {
       );
     }
 
+    let placementFailure: unknown;
     try {
       await this.bot.equip(inventoryItem, "hand");
       await this.bot.placeBlock(reference.block, reference.face);
     } catch (error) {
-      throw new MineflayerDriverError(
-        "WRITE_FAILED",
-        `Mineflayer block placement failed: ${reasonText(error)}`,
-      );
+      placementFailure = error;
     }
 
-    const placedName = namespacedBlock(this.readBlock(target).name);
+    const placedName = await this.waitForBlockName(
+      target,
+      (currentName) => currentName === blockName,
+    );
     if (placedName !== blockName) {
+      if (placementFailure !== undefined) {
+        throw new MineflayerDriverError(
+          "WRITE_FAILED",
+          `Mineflayer block placement failed: ${reasonText(placementFailure)}`,
+        );
+      }
       throw new MineflayerDriverError(
         "WRITE_VERIFICATION_FAILED",
         `Mineflayer reported placement success but the target contains ${placedName}.`,
@@ -121,17 +130,24 @@ export class BoundedWriteController {
       );
     }
 
+    let breakingFailure: unknown;
     try {
       await this.bot.dig(current, true, "raycast");
     } catch (error) {
-      throw new MineflayerDriverError(
-        "WRITE_FAILED",
-        `Mineflayer block breaking failed: ${reasonText(error)}`,
-      );
+      breakingFailure = error;
     }
 
-    const remainingName = namespacedBlock(this.readBlock(target).name);
+    const remainingName = await this.waitForBlockName(
+      target,
+      (currentName) => currentName !== expectedBlockName,
+    );
     if (remainingName === expectedBlockName) {
+      if (breakingFailure !== undefined) {
+        throw new MineflayerDriverError(
+          "WRITE_FAILED",
+          `Mineflayer block breaking failed: ${reasonText(breakingFailure)}`,
+        );
+      }
       throw new MineflayerDriverError(
         "WRITE_VERIFICATION_FAILED",
         `Mineflayer reported breaking success but the target still contains ${remainingName}.`,
@@ -202,5 +218,21 @@ export class BoundedWriteController {
       }
     }
     return undefined;
+  }
+  private async waitForBlockName(
+    position: WorldPosition,
+    matches: (blockName: string) => boolean,
+  ): Promise<string> {
+    const deadline = Date.now() + verificationTimeoutMs;
+    let blockName = namespacedBlock(this.readBlock(position).name);
+
+    while (!matches(blockName) && Date.now() < deadline) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, verificationPollMs);
+      });
+      blockName = namespacedBlock(this.readBlock(position).name);
+    }
+
+    return blockName;
   }
 }

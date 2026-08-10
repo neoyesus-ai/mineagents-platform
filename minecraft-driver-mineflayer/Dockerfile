@@ -17,6 +17,8 @@ COPY agents ./agents
 RUN npm ci
 RUN npm run build --workspace @mineagents/observability \
     && npm run build --workspace @mineagents/minecraft-adapter \
+    && npm run build --workspace @mineagents/agent-builder \
+    && npm run build --workspace @mineagents/agent-collector \
     && npm run build --workspace @mineagents/mineflayer-driver
 RUN npm prune --omit=dev
 
@@ -28,6 +30,8 @@ WORKDIR /app
 COPY --from=build /workspace/node_modules ./node_modules
 COPY --from=build /workspace/observability ./observability
 COPY --from=build /workspace/minecraft-adapter ./minecraft-adapter
+COPY --from=build /workspace/agents/builder ./agents/builder
+COPY --from=build /workspace/agents/collector ./agents/collector
 COPY --from=build /workspace/minecraft-driver-mineflayer ./minecraft-driver-mineflayer
 
 WORKDIR /app/minecraft-driver-mineflayer

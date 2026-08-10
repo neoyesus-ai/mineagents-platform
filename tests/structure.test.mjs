@@ -25,6 +25,7 @@ const requiredPaths = [
   "docs/decisions/0010-bounded-mineflayer-movement.md",
   "docs/decisions/0011-preconditioned-mineflayer-writes.md",
   "docs/decisions/0012-bounded-dashboard-actions.md",
+  "docs/decisions/0013-supervised-agent-world-smoke.md",
   "docs/minecraft-server.md",
   "docs/decisions/0008-disposable-minecraft-server.md",
   "docs/decisions/0009-read-only-mineflayer-driver.md",
@@ -78,6 +79,7 @@ test("Mineflayer driver exposes the reproducible movement smoke command", async 
   );
 
   assert.equal(manifest.scripts?.["smoke:movement"], "node dist/movement-smoke-cli.js");
+  assert.equal(manifest.scripts?.["smoke:agents"], "node dist/agent-smoke-cli.js");
 });
 
 test("compose pins an isolated Minecraft development server", async () => {
