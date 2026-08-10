@@ -16,7 +16,8 @@ services:
       MOTD: MineAgents disposable development world
       SPAWN_PROTECTION: "0"
       ENABLE_COMMAND_BLOCK: "FALSE"
-      ENABLE_RCON: "FALSE"
+      ENABLE_RCON: "TRUE"
+      RCON_PASSWORD: "mineagents-dev-only"
       VIEW_DISTANCE: "6"
       SIMULATION_DISTANCE: "4"
     ports:
@@ -31,25 +32,6 @@ services:
       start_period: 90s
     tty: true
     stdin_open: true
-
-  mineflayer-observer:
-    build:
-      context: .
-      dockerfile: minecraft-driver-mineflayer/Dockerfile
-    environment:
-      MINECRAFT_HOST: minecraft
-      MINECRAFT_PORT: "25565"
-      MINECRAFT_VERSION: "${MINECRAFT_VERSION:-1.21.11}"
-      MINECRAFT_USERNAME: "${MINECRAFT_USERNAME:-MineObserver}"
-      MINECRAFT_MOVEMENT_TIMEOUT_MS: "${MINECRAFT_MOVEMENT_TIMEOUT_MS:-30000}"
-      COORDINATOR_URL: http://coordinator:3000
-      AGENT_HEARTBEAT_INTERVAL_MS: "15000"
-    depends_on:
-      minecraft:
-        condition: service_healthy
-      coordinator:
-        condition: service_started
-    restart: unless-stopped
 
   coordinator:
     build:
@@ -76,8 +58,73 @@ services:
     ports:
       - "127.0.0.1:${DASHBOARD_PORT:-3001}:3001"
 
+  mineflayer-observer:
+    build:
+      context: .
+      dockerfile: minecraft-driver-mineflayer/Dockerfile
+    environment:
+      MINECRAFT_HOST: minecraft
+      MINECRAFT_PORT: "25565"
+      MINECRAFT_VERSION: "${MINECRAFT_VERSION:-1.21.11}"
+      MINECRAFT_USERNAME: "${MINECRAFT_USERNAME:-MineObserver}"
+      MINECRAFT_MOVEMENT_TIMEOUT_MS: "${MINECRAFT_MOVEMENT_TIMEOUT_MS:-30000}"
+      COORDINATOR_URL: http://coordinator:3000
+      AGENT_HEARTBEAT_INTERVAL_MS: "15000"
+    depends_on:
+      minecraft:
+        condition: service_healthy
+      coordinator:
+        condition: service_started
+    restart: unless-stopped
+
+  collector-worker:
+    build:
+      context: .
+      dockerfile: minecraft-driver-mineflayer/Dockerfile
+    command:
+      - node
+      - dist/collector-worker-cli.js
+    environment:
+      MINECRAFT_HOST: minecraft
+      MINECRAFT_PORT: "25565"
+      MINECRAFT_VERSION: "${MINECRAFT_VERSION:-1.21.11}"
+      MINECRAFT_USERNAME: "${COLLECTOR_MINECRAFT_USERNAME:-Recolector1}"
+
+      MINECRAFT_CONNECT_TIMEOUT_MS: "30000"
+      MINECRAFT_CHUNKS_TIMEOUT_MS: "30000"
+      MINECRAFT_MOVEMENT_TIMEOUT_MS: "30000"
+
+      COORDINATOR_URL: http://coordinator:3000
+
+      AGENT_ID: "${COLLECTOR_AGENT_ID:-collector-1}"
+      AGENT_HEARTBEAT_INTERVAL_MS: "15000"
+      AGENT_POLL_INTERVAL_MS: "3000"
+
+      COLLECTOR_WRITE_APPROVAL: "I_APPROVE_COLLECTOR_WRITES_TO_THE_DISPOSABLE_WORLD"
+
+      COLLECTOR_ALLOWED_DIMENSION: "minecraft:overworld"
+
+      # Región deliberadamente limitada para el entorno de desarrollo.
+      # Más adelante podremos hacerla configurable desde .env.
+      COLLECTOR_ALLOWED_MIN: "-128,-64,-128"
+      COLLECTOR_ALLOWED_MAX: "128,320,128"
+
+      # Primera whitelist deliberadamente pequeña.
+      COLLECTOR_ALLOWED_BLOCKS: "minecraft:oak_log"
+
+      COLLECTOR_MAX_ACTIONS_PER_TASK: "64"
+
+    depends_on:
+      minecraft:
+        condition: service_healthy
+      coordinator:
+        condition: service_started
+
+    restart: unless-stopped
+
 volumes:
   coordinator-data:
     name: "${COORDINATOR_DATA_VOLUME:-mineagents-platform_coordinator-data}"
+
   minecraft-demo-data:
     name: "${MINECRAFT_DATA_VOLUME:-mineagents-platform_minecraft-demo-data}"
