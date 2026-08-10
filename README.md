@@ -18,7 +18,7 @@ La visión es que varios agentes especializados colaboren sobre un mismo proyect
 - El dashboard presenta el estado público y permite crear proyectos y tareas o cancelar trabajo mediante la API del coordinator.
 - Blueprints ya valida y compila planos; planner y memory aportarán planificación y memoria sin mezclar responsabilidades.
 
-La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. Docker Compose incluye un servidor Vanilla 1.21.11 con un mundo desechable separado y un observador Mineflayer que no recibe órdenes. El driver admite movimiento y escrituras acotadas, aunque las escrituras reales todavía no se han habilitado ni validado sobre el servidor.
+La plataforma prioriza supervisión humana, trazabilidad y seguridad del mundo. Docker Compose incluye un servidor Vanilla 1.21.11 con un mundo desechable separado y un observador Mineflayer que no recibe órdenes. El driver admite movimiento y escrituras acotadas; collector y builder se validaron mediante un smoke manual, reversible y limitado a una coordenada de un mundo aislado.
 
 ## Arquitectura prevista
 
@@ -88,7 +88,7 @@ El SDK es independiente de HTTP, SQLite y Minecraft. El coordinator lo consume c
 
 `@mineagents/mineflayer-driver` conecta un observador real al servidor 1.21.11, expone estado e inspección de bloques cargados y registra heartbeats en el coordinator. El movimiento usa regiones explícitas y un pathfinder sin escrituras. Colocación y rotura exigen estado previo exacto, chunk cargado, alcance, inventario cuando corresponde y verificación posterior; ninguna operación mutante puede solaparse. Las autorizaciones externas siguen siendo responsabilidad de `SafeMinecraftAdapter`.
 
-El contenedor `mineflayer-observer` usa una identidad offline de desarrollo y se conecta exclusivamente al servicio `minecraft` de Compose.
+El contenedor `mineflayer-observer` usa una identidad offline de desarrollo y se conecta exclusivamente al servicio `minecraft` de Compose. El comando manual `smoke:agents` permanece separado del observer y exige aprobación, bloque y coordenadas exactas; su operación está en [docs/minecraft-server.md](docs/minecraft-server.md).
 
 ## Agente recolector
 
@@ -184,7 +184,7 @@ Todos los puertos se limitan a loopback. El servidor usa modo creativo, dificult
 2. Terminar contratos del SDK y de tareas compartidas.
 3. Evolucionar la cola persistente y el manejo de progreso.
 4. Implementar los agentes recolector y constructor sobre límites seguros.
-5. Validar las escrituras autorizadas sobre el mundo desechable.
+5. Validar las escrituras autorizadas sobre el mundo desechable (completado).
 6. Crear dashboard, métricas y despliegue reproducible.
 
 Fuera del MVP inicial quedan la integración con LLM, la economía entre agentes, las personalidades complejas y la búsqueda de imágenes.

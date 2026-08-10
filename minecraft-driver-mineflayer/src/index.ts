@@ -1,3 +1,5 @@
+export * from "./agent-smoke.js";
+export * from "./agent-smoke-config.js";
 export * from "./bounded-movement.js";
 export * from "./bounded-writes.js";
 export * from "./config.js";

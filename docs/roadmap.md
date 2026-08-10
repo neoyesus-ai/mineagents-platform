@@ -33,7 +33,7 @@ El roadmap avanza por fases verificables. Completar una fase no habilita automá
 - [x] Implementar el agente recolector.
 - [x] Implementar el agente constructor.
 - [x] Definir y validar el formato de planos.
-- [ ] Probar en un mundo desechable dedicado.
+- [x] Probar en un mundo desechable dedicado.
 
 ## Fase 4 — Operación
 

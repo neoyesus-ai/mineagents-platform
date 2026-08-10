@@ -21,7 +21,7 @@ Cada operación:
 - exige que el chunk ya esté cargado;
 - comprueba el nombre exacto del bloque antes de actuar;
 - no se mueve, fabrica ni elige un material alternativo;
-- verifica el bloque observado después de que Mineflayer informe éxito;
+- verifica durante un intervalo acotado el bloque observado, incluso si Mineflayer devuelve un resultado ambiguo;
 - se excluye mutuamente con movimiento y con cualquier otra escritura.
 
 Para colocar, el inventario debe contener el bloque exacto y debe existir una cara sólida adyacente dentro del alcance de interacción. Para romper, `canDigBlock` debe confirmar alcance y capacidad; la rotura usa raycast sobre el bloque ya validado.
@@ -34,4 +34,4 @@ Para colocar, el inventario debe contener el bloque exacto y debe existir una ca
 - Un estado obsoleto, inventario insuficiente, chunk ausente, falta de alcance o postcondición incorrecta falla con un error acotado.
 - El movimiento no puede solaparse con una escritura.
 - Las pruebas automatizadas usan un mundo en memoria y no modifican `minecraft-demo-data`.
-- La validación real sobre el mundo desechable permanece pendiente y requiere autorización explícita.
+- La validación real se completó mediante el smoke supervisado descrito en [ADR 0013](0013-supervised-agent-world-smoke.md).
