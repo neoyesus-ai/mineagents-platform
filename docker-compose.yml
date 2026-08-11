@@ -20,16 +20,20 @@ services:
       RCON_PASSWORD: "mineagents-dev-only"
       VIEW_DISTANCE: "6"
       SIMULATION_DISTANCE: "4"
+
     ports:
       - "127.0.0.1:${MINECRAFT_PORT:-25565}:25565"
+
     volumes:
       - minecraft-demo-data:/data
+
     healthcheck:
       test: ["CMD", "mc-health"]
       interval: 10s
       timeout: 5s
       retries: 18
       start_period: 90s
+
     tty: true
     stdin_open: true
 
@@ -37,11 +41,14 @@ services:
     build:
       context: .
       dockerfile: coordinator/Dockerfile
+
     environment:
       COORDINATOR_PORT: "3000"
       COORDINATOR_DB_PATH: /data/coordinator.sqlite
+
     ports:
       - "127.0.0.1:${COORDINATOR_PORT:-3000}:3000"
+
     volumes:
       - coordinator-data:/data
 
@@ -49,12 +56,15 @@ services:
     build:
       context: .
       dockerfile: dashboard/Dockerfile
+
     environment:
       DASHBOARD_PORT: "3001"
       DASHBOARD_REFRESH_SECONDS: "10"
       COORDINATOR_URL: http://coordinator:3000
+
     depends_on:
       - coordinator
+
     ports:
       - "127.0.0.1:${DASHBOARD_PORT:-3001}:3001"
 
@@ -62,28 +72,35 @@ services:
     build:
       context: .
       dockerfile: minecraft-driver-mineflayer/Dockerfile
+
     environment:
       MINECRAFT_HOST: minecraft
       MINECRAFT_PORT: "25565"
       MINECRAFT_VERSION: "${MINECRAFT_VERSION:-1.21.11}"
       MINECRAFT_USERNAME: "${MINECRAFT_USERNAME:-MineObserver}"
       MINECRAFT_MOVEMENT_TIMEOUT_MS: "${MINECRAFT_MOVEMENT_TIMEOUT_MS:-30000}"
+
       COORDINATOR_URL: http://coordinator:3000
       AGENT_HEARTBEAT_INTERVAL_MS: "15000"
+
     depends_on:
       minecraft:
         condition: service_healthy
+
       coordinator:
         condition: service_started
+
     restart: unless-stopped
 
   collector-worker:
     build:
       context: .
       dockerfile: minecraft-driver-mineflayer/Dockerfile
+
     command:
       - node
       - dist/collector-worker-cli.js
+
     environment:
       MINECRAFT_HOST: minecraft
       MINECRAFT_PORT: "25565"
@@ -103,20 +120,59 @@ services:
       COLLECTOR_WRITE_APPROVAL: "I_APPROVE_COLLECTOR_WRITES_TO_THE_DISPOSABLE_WORLD"
 
       COLLECTOR_ALLOWED_DIMENSION: "minecraft:overworld"
-
-      # Región deliberadamente limitada para el entorno de desarrollo.
-      # Más adelante podremos hacerla configurable desde .env.
       COLLECTOR_ALLOWED_MIN: "-128,-64,-128"
       COLLECTOR_ALLOWED_MAX: "128,320,128"
 
-      # Primera whitelist deliberadamente pequeña.
       COLLECTOR_ALLOWED_BLOCKS: "minecraft:oak_log"
-
       COLLECTOR_MAX_ACTIONS_PER_TASK: "64"
 
     depends_on:
       minecraft:
         condition: service_healthy
+
+      coordinator:
+        condition: service_started
+
+    restart: unless-stopped
+
+  builder-worker:
+    build:
+      context: .
+      dockerfile: minecraft-driver-mineflayer/Dockerfile
+
+    command:
+      - node
+      - dist/builder-worker-cli.js
+
+    environment:
+      MINECRAFT_HOST: minecraft
+      MINECRAFT_PORT: "25565"
+      MINECRAFT_VERSION: "${MINECRAFT_VERSION:-1.21.11}"
+      MINECRAFT_USERNAME: "${BUILDER_MINECRAFT_USERNAME:-Constructor1}"
+
+      MINECRAFT_CONNECT_TIMEOUT_MS: "30000"
+      MINECRAFT_CHUNKS_TIMEOUT_MS: "30000"
+      MINECRAFT_MOVEMENT_TIMEOUT_MS: "30000"
+
+      COORDINATOR_URL: http://coordinator:3000
+
+      AGENT_ID: "${BUILDER_AGENT_ID:-builder-1}"
+      AGENT_HEARTBEAT_INTERVAL_MS: "15000"
+      AGENT_POLL_INTERVAL_MS: "3000"
+
+      BUILDER_WRITE_APPROVAL: "I_APPROVE_BUILDER_WRITES_TO_THE_DISPOSABLE_WORLD"
+
+      BUILDER_ALLOWED_DIMENSION: "minecraft:overworld"
+      BUILDER_ALLOWED_MIN: "-128,-64,-128"
+      BUILDER_ALLOWED_MAX: "128,320,128"
+
+      BUILDER_ALLOWED_BLOCKS: "minecraft:oak_log"
+      BUILDER_MAX_PLACEMENTS_PER_TASK: "256"
+
+    depends_on:
+      minecraft:
+        condition: service_healthy
+
       coordinator:
         condition: service_started
 

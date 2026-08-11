@@ -24,6 +24,7 @@
     "smoke:agents": "node dist/agent-smoke-cli.js",
     "smoke:movement": "node dist/movement-smoke-cli.js",
     "start": "node dist/cli.js",
-    "start:collector": "node dist/collector-worker-cli.js"
+    "start:collector": "node dist/collector-worker-cli.js",
+    "start:builder": "node dist/builder-worker-cli.js"
   }
 }
