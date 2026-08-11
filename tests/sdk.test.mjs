@@ -122,7 +122,11 @@ test(
         requiredRole:
           null,
 
-        payload: {},
+        payload:
+          {},
+
+        dependsOnTaskIds:
+          [],
       },
     );
 
@@ -169,6 +173,59 @@ test(
           quantity:
             4,
         },
+
+        dependsOnTaskIds:
+          [],
+      },
+    );
+
+    assert.deepEqual(
+      parseTaskCreateInput({
+        title:
+          " Build shelter ",
+
+        kind:
+          "build-blueprint",
+
+        requiredRole:
+          " builder ",
+
+        payload: {
+          blueprintId:
+            "starter-shelter",
+        },
+
+        dependsOnTaskIds: [
+          " task-collect-wood ",
+          "task-collect-stone",
+        ],
+      }),
+
+      {
+        title:
+          "Build shelter",
+
+        description:
+          undefined,
+
+        projectId:
+          undefined,
+
+        kind:
+          "build-blueprint",
+
+        requiredRole:
+          "builder",
+
+        payload: {
+          blueprintId:
+            "starter-shelter",
+        },
+
+        dependsOnTaskIds: [
+          "task-collect-wood",
+          "task-collect-stone",
+        ],
       },
     );
 
@@ -210,7 +267,8 @@ test(
     assert.throws(
       () =>
         parseTaskPatchInput({
-          title: 42,
+          title:
+            42,
         }),
 
       (error) =>
@@ -269,6 +327,54 @@ test(
 
           kind:
             "dance",
+        }),
+
+      (error) =>
+        error instanceof
+          ContractValidationError,
+    );
+
+    assert.throws(
+      () =>
+        parseTaskCreateInput({
+          title:
+            "Invalid dependencies",
+
+          dependsOnTaskIds:
+            "task-1",
+        }),
+
+      (error) =>
+        error instanceof
+          ContractValidationError,
+    );
+
+    assert.throws(
+      () =>
+        parseTaskCreateInput({
+          title:
+            "Empty dependency",
+
+          dependsOnTaskIds: [
+            "",
+          ],
+        }),
+
+      (error) =>
+        error instanceof
+          ContractValidationError,
+    );
+
+    assert.throws(
+      () =>
+        parseTaskCreateInput({
+          title:
+            "Duplicate dependencies",
+
+          dependsOnTaskIds: [
+            "task-1",
+            "task-1",
+          ],
         }),
 
       (error) =>

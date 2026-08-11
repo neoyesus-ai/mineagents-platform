@@ -24,7 +24,8 @@ import {
   DashboardUpstreamError,
 } from "./errors.js";
 
-type JsonRecord = Record<string, unknown>;
+type JsonRecord =
+  Record<string, unknown>;
 
 export interface CoordinatorClientOptions {
   baseUrl: string;
@@ -34,7 +35,8 @@ export interface CoordinatorClientOptions {
 }
 
 export interface DashboardDataSource {
-  getSnapshot(): Promise<DashboardSnapshot>;
+  getSnapshot():
+    Promise<DashboardSnapshot>;
 
   createProject?(
     input: ProjectInput,
@@ -54,9 +56,12 @@ const asRecord = (
   label: string,
 ): JsonRecord => {
   if (
-    typeof value !== "object" ||
+    typeof value !==
+      "object" ||
     value === null ||
-    Array.isArray(value)
+    Array.isArray(
+      value,
+    )
   ) {
     throw new DashboardUpstreamError(
       `Coordinator returned an invalid ${label}.`,
@@ -71,9 +76,13 @@ const requiredString = (
   key: string,
   label: string,
 ): string => {
-  const value = record[key];
+  const value =
+    record[key];
 
-  if (typeof value !== "string") {
+  if (
+    typeof value !==
+    "string"
+  ) {
     throw new DashboardUpstreamError(
       `Coordinator returned an invalid ${label}.${key}.`,
     );
@@ -87,11 +96,13 @@ const nullableString = (
   key: string,
   label: string,
 ): string | null => {
-  const value = record[key];
+  const value =
+    record[key];
 
   if (
     value !== null &&
-    typeof value !== "string"
+    typeof value !==
+      "string"
   ) {
     throw new DashboardUpstreamError(
       `Coordinator returned an invalid ${label}.${key}.`,
@@ -101,15 +112,58 @@ const nullableString = (
   return value;
 };
 
+const stringArray = (
+  record: JsonRecord,
+  key: string,
+  label: string,
+): readonly string[] => {
+  const value =
+    record[key];
+
+  if (
+    !Array.isArray(
+      value,
+    )
+  ) {
+    throw new DashboardUpstreamError(
+      `Coordinator returned an invalid ${label}.${key}.`,
+    );
+  }
+
+  return value.map(
+    (
+      item,
+      index,
+    ) => {
+      if (
+        typeof item !==
+          "string" ||
+        item.trim()
+          .length === 0
+      ) {
+        throw new DashboardUpstreamError(
+          `Coordinator returned an invalid ${label}.${key}[${index}].`,
+        );
+      }
+
+      return item;
+    },
+  );
+};
+
 const requiredCount = (
   record: JsonRecord,
   key: string,
 ): number => {
-  const value = record[key];
+  const value =
+    record[key];
 
   if (
-    !Number.isSafeInteger(value) ||
-    (value as number) < 0
+    !Number.isSafeInteger(
+      value,
+    ) ||
+    (value as number) <
+      0
   ) {
     throw new DashboardUpstreamError(
       `Coordinator returned an invalid health.${key}.`,
@@ -124,9 +178,12 @@ const parseTaskPayload = (
   label: string,
 ): TaskPayload => {
   if (
-    typeof value !== "object" ||
+    typeof value !==
+      "object" ||
     value === null ||
-    Array.isArray(value)
+    Array.isArray(
+      value,
+    )
   ) {
     throw new DashboardUpstreamError(
       `Coordinator returned an invalid ${label}.payload.`,
@@ -139,46 +196,56 @@ const parseTaskPayload = (
 const parseHealth = (
   value: unknown,
 ): CoordinatorHealth => {
-  const health = asRecord(
-    value,
-    "health response",
-  );
+  const health =
+    asRecord(
+      value,
+      "health response",
+    );
 
-  if (health.status !== "ok") {
+  if (
+    health.status !==
+    "ok"
+  ) {
     throw new DashboardUpstreamError(
       "Coordinator health status is not ok.",
     );
   }
 
   return {
-    status: "ok",
+    status:
+      "ok",
 
-    service: requiredString(
-      health,
-      "service",
-      "health",
-    ),
+    service:
+      requiredString(
+        health,
+        "service",
+        "health",
+      ),
 
-    timestamp: requiredString(
-      health,
-      "timestamp",
-      "health",
-    ),
+    timestamp:
+      requiredString(
+        health,
+        "timestamp",
+        "health",
+      ),
 
-    agents: requiredCount(
-      health,
-      "agents",
-    ),
+    agents:
+      requiredCount(
+        health,
+        "agents",
+      ),
 
-    tasks: requiredCount(
-      health,
-      "tasks",
-    ),
+    tasks:
+      requiredCount(
+        health,
+        "tasks",
+      ),
 
-    projects: requiredCount(
-      health,
-      "projects",
-    ),
+    projects:
+      requiredCount(
+        health,
+        "projects",
+      ),
   };
 };
 
@@ -186,57 +253,70 @@ const parseAgent = (
   value: unknown,
   index: number,
 ): AgentRecord => {
-  const label = `agents[${index}]`;
+  const label =
+    `agents[${index}]`;
 
-  const agent = asRecord(
-    value,
-    label,
-  );
+  const agent =
+    asRecord(
+      value,
+      label,
+    );
 
-  if (!isAgentStatus(agent.status)) {
+  if (
+    !isAgentStatus(
+      agent.status,
+    )
+  ) {
     throw new DashboardUpstreamError(
       `Coordinator returned an invalid ${label}.status.`,
     );
   }
 
   return {
-    id: requiredString(
-      agent,
-      "id",
-      label,
-    ),
+    id:
+      requiredString(
+        agent,
+        "id",
+        label,
+      ),
 
-    name: requiredString(
-      agent,
-      "name",
-      label,
-    ),
+    name:
+      requiredString(
+        agent,
+        "name",
+        label,
+      ),
 
-    role: nullableString(
-      agent,
-      "role",
-      label,
-    ),
+    role:
+      nullableString(
+        agent,
+        "role",
+        label,
+      ),
 
-    status: agent.status,
+    status:
+      agent.status,
 
-    lastHeartbeatAt: requiredString(
-      agent,
-      "lastHeartbeatAt",
-      label,
-    ),
+    lastHeartbeatAt:
+      requiredString(
+        agent,
+        "lastHeartbeatAt",
+        label,
+      ),
 
-    createdAt: requiredString(
-      agent,
-      "createdAt",
-      label,
-    ),
+    createdAt:
+      requiredString(
+        agent,
+        "createdAt",
+        label,
+      ),
 
-    updatedAt: requiredString(
-      agent,
-      "updatedAt",
-      label,
-    ),
+    updatedAt:
+      requiredString(
+        agent,
+        "updatedAt",
+        label,
+      ),
   };
 };
 
@@ -244,43 +324,50 @@ const parseProject = (
   value: unknown,
   index: number,
 ): ProjectRecord => {
-  const label = `projects[${index}]`;
+  const label =
+    `projects[${index}]`;
 
-  const project = asRecord(
-    value,
-    label,
-  );
+  const project =
+    asRecord(
+      value,
+      label,
+    );
 
   return {
-    id: requiredString(
-      project,
-      "id",
-      label,
-    ),
+    id:
+      requiredString(
+        project,
+        "id",
+        label,
+      ),
 
-    name: requiredString(
-      project,
-      "name",
-      label,
-    ),
+    name:
+      requiredString(
+        project,
+        "name",
+        label,
+      ),
 
-    description: nullableString(
-      project,
-      "description",
-      label,
-    ),
+    description:
+      nullableString(
+        project,
+        "description",
+        label,
+      ),
 
-    createdAt: requiredString(
-      project,
-      "createdAt",
-      label,
-    ),
+    createdAt:
+      requiredString(
+        project,
+        "createdAt",
+        label,
+      ),
 
-    updatedAt: requiredString(
-      project,
-      "updatedAt",
-      label,
-    ),
+    updatedAt:
+      requiredString(
+        project,
+        "updatedAt",
+        label,
+      ),
   };
 };
 
@@ -288,112 +375,145 @@ const parseTask = (
   value: unknown,
   index: number,
 ): TaskRecord => {
-  const label = `tasks[${index}]`;
+  const label =
+    `tasks[${index}]`;
 
-  const task = asRecord(
-    value,
-    label,
-  );
+  const task =
+    asRecord(
+      value,
+      label,
+    );
 
-  if (!isTaskStatus(task.status)) {
+  if (
+    !isTaskStatus(
+      task.status,
+    )
+  ) {
     throw new DashboardUpstreamError(
       `Coordinator returned an invalid ${label}.status.`,
     );
   }
 
-  if (!isTaskKind(task.kind)) {
+  if (
+    !isTaskKind(
+      task.kind,
+    )
+  ) {
     throw new DashboardUpstreamError(
       `Coordinator returned an invalid ${label}.kind.`,
     );
   }
 
   return {
-    id: requiredString(
-      task,
-      "id",
-      label,
-    ),
+    id:
+      requiredString(
+        task,
+        "id",
+        label,
+      ),
 
-    projectId: nullableString(
-      task,
-      "projectId",
-      label,
-    ),
+    projectId:
+      nullableString(
+        task,
+        "projectId",
+        label,
+      ),
 
-    title: requiredString(
-      task,
-      "title",
-      label,
-    ),
+    title:
+      requiredString(
+        task,
+        "title",
+        label,
+      ),
 
-    description: nullableString(
-      task,
-      "description",
-      label,
-    ),
+    description:
+      nullableString(
+        task,
+        "description",
+        label,
+      ),
 
-    kind: task.kind,
+    kind:
+      task.kind,
 
-    requiredRole: nullableString(
-      task,
-      "requiredRole",
-      label,
-    ),
+    requiredRole:
+      nullableString(
+        task,
+        "requiredRole",
+        label,
+      ),
 
-    payload: parseTaskPayload(
-      task.payload,
-      label,
-    ),
+    payload:
+      parseTaskPayload(
+        task.payload,
+        label,
+      ),
 
-    status: task.status,
+    dependsOnTaskIds:
+      stringArray(
+        task,
+        "dependsOnTaskIds",
+        label,
+      ),
 
-    assignedAgentId: nullableString(
-      task,
-      "assignedAgentId",
-      label,
-    ),
+    status:
+      task.status,
 
-    failureReason: nullableString(
-      task,
-      "failureReason",
-      label,
-    ),
+    assignedAgentId:
+      nullableString(
+        task,
+        "assignedAgentId",
+        label,
+      ),
 
-    createdAt: requiredString(
-      task,
-      "createdAt",
-      label,
-    ),
+    failureReason:
+      nullableString(
+        task,
+        "failureReason",
+        label,
+      ),
 
-    updatedAt: requiredString(
-      task,
-      "updatedAt",
-      label,
-    ),
+    createdAt:
+      requiredString(
+        task,
+        "createdAt",
+        label,
+      ),
 
-    startedAt: nullableString(
-      task,
-      "startedAt",
-      label,
-    ),
+    updatedAt:
+      requiredString(
+        task,
+        "updatedAt",
+        label,
+      ),
 
-    completedAt: nullableString(
-      task,
-      "completedAt",
-      label,
-    ),
+    startedAt:
+      nullableString(
+        task,
+        "startedAt",
+        label,
+      ),
 
-    failedAt: nullableString(
-      task,
-      "failedAt",
-      label,
-    ),
+    completedAt:
+      nullableString(
+        task,
+        "completedAt",
+        label,
+      ),
 
-    cancelledAt: nullableString(
-      task,
-      "cancelledAt",
-      label,
-    ),
+    failedAt:
+      nullableString(
+        task,
+        "failedAt",
+        label,
+      ),
+
+    cancelledAt:
+      nullableString(
+        task,
+        "cancelledAt",
+        label,
+      ),
   };
 };
 
@@ -405,12 +525,15 @@ const parseEntityResponse = <T>(
     index: number,
   ) => T,
 ): T => {
-  const response = asRecord(
-    value,
-    `${key} response`,
-  );
+  const response =
+    asRecord(
+      value,
+      `${key} response`,
+    );
 
-  if (!(key in response)) {
+  if (
+    !(key in response)
+  ) {
     throw new DashboardUpstreamError(
       `Coordinator returned an invalid ${key} response.`,
     );
@@ -430,14 +553,20 @@ const parseList = <T>(
     index: number,
   ) => T,
 ): readonly T[] => {
-  const response = asRecord(
-    value,
-    `${key} response`,
-  );
+  const response =
+    asRecord(
+      value,
+      `${key} response`,
+    );
 
-  const items = response[key];
+  const items =
+    response[key];
 
-  if (!Array.isArray(items)) {
+  if (
+    !Array.isArray(
+      items,
+    )
+  ) {
     throw new DashboardUpstreamError(
       `Coordinator returned an invalid ${key} list.`,
     );
@@ -451,13 +580,21 @@ const parseList = <T>(
 export class CoordinatorClient
   implements DashboardDataSource
 {
-  private readonly baseUrl: string;
-  private readonly timeoutMs: number;
-  private readonly fetch: typeof globalThis.fetch;
-  private readonly now: () => Date;
+  private readonly baseUrl:
+    string;
+
+  private readonly timeoutMs:
+    number;
+
+  private readonly fetch:
+    typeof globalThis.fetch;
+
+  private readonly now:
+    () => Date;
 
   constructor(
-    options: CoordinatorClientOptions,
+    options:
+      CoordinatorClientOptions,
   ) {
     this.baseUrl =
       normalizeCoordinatorBaseUrl(
@@ -472,8 +609,10 @@ export class CoordinatorClient
       !Number.isSafeInteger(
         this.timeoutMs,
       ) ||
-      this.timeoutMs < 1 ||
-      this.timeoutMs > 60_000
+      this.timeoutMs <
+        1 ||
+      this.timeoutMs >
+        60_000
     ) {
       throw new TypeError(
         "Dashboard coordinator timeout must be between 1 and 60000 milliseconds.",
@@ -489,40 +628,58 @@ export class CoordinatorClient
       (() => new Date());
   }
 
-  async getSnapshot(): Promise<DashboardSnapshot> {
+  async getSnapshot():
+    Promise<DashboardSnapshot>
+  {
     const [
       healthValue,
       agentsValue,
       tasksValue,
       projectsValue,
-    ] = await Promise.all([
-      this.fetchJson("/health"),
-      this.fetchJson("/agents"),
-      this.fetchJson("/tasks"),
-      this.fetchJson("/projects"),
-    ]);
+    ] =
+      await Promise.all([
+        this.fetchJson(
+          "/health",
+        ),
 
-    const agents = parseList(
-      agentsValue,
-      "agents",
-      parseAgent,
-    );
+        this.fetchJson(
+          "/agents",
+        ),
 
-    const tasks = parseList(
-      tasksValue,
-      "tasks",
-      parseTask,
-    );
+        this.fetchJson(
+          "/tasks",
+        ),
 
-    const projects = parseList(
-      projectsValue,
-      "projects",
-      parseProject,
-    );
+        this.fetchJson(
+          "/projects",
+        ),
+      ]);
+
+    const agents =
+      parseList(
+        agentsValue,
+        "agents",
+        parseAgent,
+      );
+
+    const tasks =
+      parseList(
+        tasksValue,
+        "tasks",
+        parseTask,
+      );
+
+    const projects =
+      parseList(
+        projectsValue,
+        "projects",
+        parseProject,
+      );
 
     return {
       generatedAt:
-        this.now().toISOString(),
+        this.now()
+          .toISOString(),
 
       coordinator:
         parseHealth(
@@ -530,7 +687,9 @@ export class CoordinatorClient
         ),
 
       agents,
+
       tasks,
+
       projects,
 
       taskCounts:
@@ -547,7 +706,8 @@ export class CoordinatorClient
       await this.fetchJson(
         "/projects",
         {
-          method: "POST",
+          method:
+            "POST",
 
           body:
             JSON.stringify(
@@ -570,7 +730,8 @@ export class CoordinatorClient
       await this.fetchJson(
         "/tasks",
         {
-          method: "POST",
+          method:
+            "POST",
 
           body:
             JSON.stringify(
@@ -595,11 +756,13 @@ export class CoordinatorClient
           taskId,
         )}`,
         {
-          method: "PATCH",
+          method:
+            "PATCH",
 
           body:
             JSON.stringify({
-              status: "cancelled",
+              status:
+                "cancelled",
             }),
         },
       );
@@ -627,7 +790,8 @@ export class CoordinatorClient
       );
 
       if (
-        init.body !== undefined
+        init.body !==
+        undefined
       ) {
         headers.set(
           "content-type",
@@ -650,7 +814,9 @@ export class CoordinatorClient
           },
         );
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
         throw new DashboardUpstreamError(
           `Coordinator request ${path} failed with status ${response.status}.`,
         );
@@ -668,7 +834,8 @@ export class CoordinatorClient
       throw new DashboardUpstreamError(
         `Coordinator request ${path} failed.`,
         {
-          cause: error,
+          cause:
+            error,
         },
       );
     }

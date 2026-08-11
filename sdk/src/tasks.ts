@@ -16,11 +16,16 @@ export const taskStatuses = [
   "cancelled",
 ] as const;
 
-export type TaskStatus = (typeof taskStatuses)[number];
+export type TaskStatus =
+  (typeof taskStatuses)[number];
 
-export const isTaskStatus = (value: unknown): value is TaskStatus =>
+export const isTaskStatus = (
+  value: unknown,
+): value is TaskStatus =>
   typeof value === "string" &&
-  taskStatuses.includes(value as TaskStatus);
+  taskStatuses.includes(
+    value as TaskStatus,
+  );
 
 export const taskKinds = [
   "manual",
@@ -29,29 +34,56 @@ export const taskKinds = [
   "move",
 ] as const;
 
-export type TaskKind = (typeof taskKinds)[number];
+export type TaskKind =
+  (typeof taskKinds)[number];
 
-export const isTaskKind = (value: unknown): value is TaskKind =>
+export const isTaskKind = (
+  value: unknown,
+): value is TaskKind =>
   typeof value === "string" &&
-  taskKinds.includes(value as TaskKind);
+  taskKinds.includes(
+    value as TaskKind,
+  );
 
-export type TaskPayload = Record<string, unknown>;
+export type TaskPayload =
+  Record<string, unknown>;
 
 const taskTransitions = {
-  pending: ["assigned", "cancelled"],
-  assigned: ["pending", "running", "failed", "cancelled"],
-  running: ["completed", "failed", "cancelled"],
+  pending: [
+    "assigned",
+    "cancelled",
+  ],
+
+  assigned: [
+    "pending",
+    "running",
+    "failed",
+    "cancelled",
+  ],
+
+  running: [
+    "completed",
+    "failed",
+    "cancelled",
+  ],
+
   completed: [],
   failed: [],
   cancelled: [],
-} as const satisfies Record<TaskStatus, readonly TaskStatus[]>;
+} as const satisfies Record<
+  TaskStatus,
+  readonly TaskStatus[]
+>;
 
 export const canTransitionTaskStatus = (
   current: TaskStatus,
   next: TaskStatus,
 ): boolean =>
   current === next ||
-  taskTransitions[current].some((status) => status === next);
+  taskTransitions[current].some(
+    (status) =>
+      status === next,
+  );
 
 export const isTerminalTaskStatus = (
   status: TaskStatus,
@@ -62,44 +94,82 @@ export const isTerminalTaskStatus = (
 
 export interface TaskRecord {
   id: string;
+
   projectId: string | null;
 
   title: string;
+
   description: string | null;
 
   kind: TaskKind;
+
   requiredRole: string | null;
+
   payload: TaskPayload;
 
+  dependsOnTaskIds:
+    readonly string[];
+
   status: TaskStatus;
-  assignedAgentId: string | null;
-  failureReason: string | null;
+
+  assignedAgentId:
+    string | null;
+
+  failureReason:
+    string | null;
 
   createdAt: string;
+
   updatedAt: string;
 
-  startedAt: string | null;
-  completedAt: string | null;
-  failedAt: string | null;
-  cancelledAt: string | null;
+  startedAt:
+    string | null;
+
+  completedAt:
+    string | null;
+
+  failedAt:
+    string | null;
+
+  cancelledAt:
+    string | null;
 }
 
 export interface TaskCreateInput {
   title: string;
-  description?: string | null;
-  projectId?: string | null;
+
+  description?:
+    string | null;
+
+  projectId?:
+    string | null;
 
   kind?: TaskKind;
-  requiredRole?: string | null;
+
+  requiredRole?:
+    string | null;
+
   payload?: TaskPayload;
+
+  dependsOnTaskIds?:
+    readonly string[];
 }
 
 export interface TaskPatchInput {
   title?: string;
-  description?: string | null;
-  projectId?: string | null;
-  assignedAgentId?: string | null;
-  failureReason?: string | null;
+
+  description?:
+    string | null;
+
+  projectId?:
+    string | null;
+
+  assignedAgentId?:
+    string | null;
+
+  failureReason?:
+    string | null;
+
   status?: TaskStatus;
 }
 
@@ -110,30 +180,96 @@ export interface ClaimTaskInput {
 const parsePayload = (
   value: unknown,
 ): TaskPayload => {
-  if (value === undefined) {
+  if (
+    value === undefined
+  ) {
     return {};
   }
 
-  return asObject(value);
+  return asObject(
+    value,
+  );
 };
 
 const parseRequiredRole = (
   value: unknown,
 ): string | null | undefined =>
-  optionalText(value, "requiredRole");
+  optionalText(
+    value,
+    "requiredRole",
+  );
+
+const parseDependencies = (
+  value: unknown,
+): readonly string[] => {
+  if (
+    value === undefined
+  ) {
+    return [];
+  }
+
+  if (
+    !Array.isArray(
+      value,
+    )
+  ) {
+    throw new ContractValidationError(
+      "Field 'dependsOnTaskIds' must be an array of task ids.",
+    );
+  }
+
+  const normalized =
+    value.map(
+      (
+        dependency,
+        index,
+      ) => {
+        if (
+          typeof dependency !==
+            "string" ||
+          dependency.trim()
+            .length === 0
+        ) {
+          throw new ContractValidationError(
+            `Field 'dependsOnTaskIds[${index}]' must be a non-empty string.`,
+          );
+        }
+
+        return dependency.trim();
+      },
+    );
+
+  if (
+    new Set(
+      normalized,
+    ).size !==
+    normalized.length
+  ) {
+    throw new ContractValidationError(
+      "Field 'dependsOnTaskIds' must not contain duplicate task ids.",
+    );
+  }
+
+  return normalized;
+};
 
 const validateExecutableTask = (
   kind: TaskKind,
-  requiredRole: string | null | undefined,
+  requiredRole:
+    string | null | undefined,
 ): void => {
-  if (kind === "manual") {
+  if (
+    kind === "manual"
+  ) {
     return;
   }
 
   if (
-    requiredRole === undefined ||
+    requiredRole ===
+      undefined ||
     requiredRole === null ||
-    requiredRole.trim().length === 0
+    requiredRole.trim()
+      .length === 0
   ) {
     throw new ContractValidationError(
       `Task kind '${kind}' requires a non-empty 'requiredRole'.`,
@@ -144,59 +280,100 @@ const validateExecutableTask = (
 export const parseTaskCreateInput = (
   value: unknown,
 ): TaskCreateInput => {
-  const input = asObject(value);
+  const input =
+    asObject(
+      value,
+    );
 
-  assertKnownKeys(input, [
-    "title",
-    "description",
-    "projectId",
-    "kind",
-    "requiredRole",
-    "payload",
-  ]);
+  assertKnownKeys(
+    input,
+    [
+      "title",
+      "description",
+      "projectId",
+      "kind",
+      "requiredRole",
+      "payload",
+      "dependsOnTaskIds",
+    ],
+  );
 
   if (
-    input.kind !== undefined &&
-    !isTaskKind(input.kind)
+    input.kind !==
+      undefined &&
+    !isTaskKind(
+      input.kind,
+    )
   ) {
     throw new ContractValidationError(
       "Field 'kind' must be a valid task kind.",
     );
   }
 
-  const kind: TaskKind = isTaskKind(input.kind)
-    ? input.kind
-    : "manual";
+  const kind:
+    TaskKind =
+      isTaskKind(
+        input.kind,
+      )
+        ? input.kind
+        : "manual";
 
-  const requiredRole = parseRequiredRole(
-    input.requiredRole,
+  const requiredRole =
+    parseRequiredRole(
+      input.requiredRole,
+    );
+
+  validateExecutableTask(
+    kind,
+    requiredRole,
   );
 
-  validateExecutableTask(kind, requiredRole);
-
   return {
-    title: requiredString(input.title, "title"),
-    description: optionalText(
-      input.description,
-      "description",
-    ),
-    projectId: optionalId(
-      input.projectId,
-      "projectId",
-    ),
+    title:
+      requiredString(
+        input.title,
+        "title",
+      ),
+
+    description:
+      optionalText(
+        input.description,
+        "description",
+      ),
+
+    projectId:
+      optionalId(
+        input.projectId,
+        "projectId",
+      ),
+
     kind,
+
     requiredRole:
-      requiredRole === undefined
+      requiredRole ===
+      undefined
         ? null
         : requiredRole,
-    payload: parsePayload(input.payload),
+
+    payload:
+      parsePayload(
+        input.payload,
+      ),
+
+    dependsOnTaskIds:
+      parseDependencies(
+        input.dependsOnTaskIds,
+      ),
   };
 };
 
 export const parseTaskPatchInput = (
   value: unknown,
 ): TaskPatchInput => {
-  const input = asObject(value);
+  const input =
+    asObject(
+      value,
+    );
 
   const allowedKeys = [
     "title",
@@ -207,17 +384,27 @@ export const parseTaskPatchInput = (
     "status",
   ] as const;
 
-  assertKnownKeys(input, allowedKeys);
+  assertKnownKeys(
+    input,
+    allowedKeys,
+  );
 
-  if (Object.keys(input).length === 0) {
+  if (
+    Object.keys(
+      input,
+    ).length === 0
+  ) {
     throw new ContractValidationError(
       "At least one task field must be provided.",
     );
   }
 
   if (
-    input.status !== undefined &&
-    !isTaskStatus(input.status)
+    input.status !==
+      undefined &&
+    !isTaskStatus(
+      input.status,
+    )
   ) {
     throw new ContractValidationError(
       "Field 'status' must be a valid task status.",
@@ -226,47 +413,67 @@ export const parseTaskPatchInput = (
 
   return {
     title:
-      input.title === undefined
+      input.title ===
+      undefined
         ? undefined
-        : requiredString(input.title, "title"),
+        : requiredString(
+            input.title,
+            "title",
+          ),
 
-    description: optionalText(
-      input.description,
-      "description",
-    ),
+    description:
+      optionalText(
+        input.description,
+        "description",
+      ),
 
-    projectId: optionalId(
-      input.projectId,
-      "projectId",
-    ),
+    projectId:
+      optionalId(
+        input.projectId,
+        "projectId",
+      ),
 
-    assignedAgentId: optionalId(
-      input.assignedAgentId,
-      "assignedAgentId",
-    ),
+    assignedAgentId:
+      optionalId(
+        input.assignedAgentId,
+        "assignedAgentId",
+      ),
 
-    failureReason: optionalText(
-      input.failureReason,
-      "failureReason",
-    ),
+    failureReason:
+      optionalText(
+        input.failureReason,
+        "failureReason",
+      ),
 
-    status: isTaskStatus(input.status)
-      ? input.status
-      : undefined,
+    status:
+      isTaskStatus(
+        input.status,
+      )
+        ? input.status
+        : undefined,
   };
 };
 
 export const parseClaimTaskInput = (
   value: unknown,
 ): ClaimTaskInput => {
-  const input = asObject(value);
+  const input =
+    asObject(
+      value,
+    );
 
-  assertKnownKeys(input, ["agentId"]);
+  assertKnownKeys(
+    input,
+    [
+      "agentId",
+    ],
+  );
 
   return {
-    agentId: requiredString(
-      input.agentId,
-      "agentId",
-    ),
+    agentId:
+      requiredString(
+        input.agentId,
+        "agentId",
+      ),
   };
 };

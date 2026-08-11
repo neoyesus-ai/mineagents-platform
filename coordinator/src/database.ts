@@ -139,6 +139,8 @@ const toProject = (
 
 const toTask = (
   row: Row,
+  dependsOnTaskIds:
+    readonly string[],
 ): TaskRecord => ({
   id: String(row.id),
 
@@ -165,6 +167,10 @@ const toTask = (
   payload: parsePayloadJson(
     row.payload_json,
   ),
+
+  dependsOnTaskIds: [
+    ...dependsOnTaskIds,
+  ],
 
   status:
     isTaskStatus(row.status)
@@ -305,6 +311,32 @@ export class CoordinatorStore {
         ON DELETE SET NULL
       );
 
+      CREATE TABLE IF NOT EXISTS task_dependencies (
+        task_id TEXT NOT NULL,
+        depends_on_task_id TEXT NOT NULL,
+
+        PRIMARY KEY (
+          task_id,
+          depends_on_task_id
+        ),
+
+        FOREIGN KEY (
+          task_id
+        )
+        REFERENCES tasks(id)
+        ON DELETE CASCADE,
+
+        FOREIGN KEY (
+          depends_on_task_id
+        )
+        REFERENCES tasks(id)
+        ON DELETE RESTRICT,
+
+        CHECK (
+          task_id <> depends_on_task_id
+        )
+      );
+
       CREATE INDEX IF NOT EXISTS
       idx_tasks_status_created_at
       ON tasks(
@@ -322,6 +354,12 @@ export class CoordinatorStore {
       idx_tasks_assigned_agent_id
       ON tasks(
         assigned_agent_id
+      );
+
+      CREATE INDEX IF NOT EXISTS
+      idx_task_dependencies_dependency
+      ON task_dependencies(
+        depends_on_task_id
       );
     `);
 
@@ -367,12 +405,50 @@ export class CoordinatorStore {
     }
 
     this.database.exec(`
+      CREATE TABLE IF NOT EXISTS task_dependencies (
+        task_id TEXT NOT NULL,
+        depends_on_task_id TEXT NOT NULL,
+
+        PRIMARY KEY (
+          task_id,
+          depends_on_task_id
+        ),
+
+        FOREIGN KEY (
+          task_id
+        )
+        REFERENCES tasks(id)
+        ON DELETE CASCADE,
+
+        FOREIGN KEY (
+          depends_on_task_id
+        )
+        REFERENCES tasks(id)
+        ON DELETE RESTRICT,
+
+        CHECK (
+          task_id <> depends_on_task_id
+        )
+      );
+
       CREATE INDEX IF NOT EXISTS
       idx_tasks_status_role_created_at
       ON tasks(
         status,
         required_role,
         created_at
+      );
+
+      CREATE INDEX IF NOT EXISTS
+      idx_task_dependencies_task
+      ON task_dependencies(
+        task_id
+      );
+
+      CREATE INDEX IF NOT EXISTS
+      idx_task_dependencies_dependency
+      ON task_dependencies(
+        depends_on_task_id
       );
     `);
   }
@@ -387,13 +463,16 @@ export class CoordinatorStore {
         .prepare(`
           SELECT *
           FROM agents
+
           ORDER BY
             updated_at DESC,
             created_at DESC
         `)
         .all() as Row[];
 
-    return rows.map(toAgent);
+    return rows.map(
+      toAgent,
+    );
   }
 
   upsertAgentHeartbeat(
@@ -524,6 +603,7 @@ export class CoordinatorStore {
         .prepare(`
           SELECT *
           FROM projects
+
           ORDER BY
             updated_at DESC,
             created_at DESC
@@ -610,6 +690,7 @@ export class CoordinatorStore {
         .prepare(`
           SELECT *
           FROM tasks
+
           ORDER BY
             created_at DESC,
             updated_at DESC
@@ -617,7 +698,10 @@ export class CoordinatorStore {
         .all() as Row[];
 
     return rows.map(
-      toTask,
+      (row) =>
+        this.toTaskRecord(
+          row,
+        ),
     );
   }
 
@@ -633,90 +717,146 @@ export class CoordinatorStore {
       );
     }
 
-    this.database
-      .prepare(`
-        INSERT INTO tasks (
+    const dependencies =
+      input.dependsOnTaskIds ??
+      [];
+
+    for (
+      const dependencyId
+      of dependencies
+    ) {
+      this.getTaskById(
+        dependencyId,
+      );
+    }
+
+    this.database.exec(
+      "BEGIN IMMEDIATE TRANSACTION;",
+    );
+
+    try {
+      this.database
+        .prepare(`
+          INSERT INTO tasks (
+            id,
+            project_id,
+
+            title,
+            description,
+
+            kind,
+            required_role,
+            payload_json,
+
+            status,
+            assigned_agent_id,
+            failure_reason,
+
+            created_at,
+            updated_at,
+
+            started_at,
+            completed_at,
+            failed_at,
+            cancelled_at
+          )
+
+          VALUES (
+            :id,
+            :projectId,
+
+            :title,
+            :description,
+
+            :kind,
+            :requiredRole,
+            :payloadJson,
+
+            'pending',
+            NULL,
+            NULL,
+
+            :createdAt,
+            :updatedAt,
+
+            NULL,
+            NULL,
+            NULL,
+            NULL
+          )
+        `)
+        .run({
           id,
-          project_id,
 
-          title,
-          description,
+          projectId:
+            input.projectId ??
+            null,
 
-          kind,
-          required_role,
-          payload_json,
+          title:
+            input.title,
 
-          status,
-          assigned_agent_id,
-          failure_reason,
+          description:
+            input.description ??
+            null,
 
-          created_at,
-          updated_at,
+          kind:
+            input.kind ??
+            "manual",
 
-          started_at,
-          completed_at,
-          failed_at,
-          cancelled_at
-        )
+          requiredRole:
+            input.requiredRole ??
+            null,
 
-        VALUES (
-          :id,
-          :projectId,
+          payloadJson:
+            JSON.stringify(
+              input.payload ??
+                {},
+            ),
 
-          :title,
-          :description,
+          createdAt:
+            timestamp,
 
-          :kind,
-          :requiredRole,
-          :payloadJson,
+          updatedAt:
+            timestamp,
+        });
 
-          'pending',
-          NULL,
-          NULL,
+      const insertDependency =
+        this.database
+          .prepare(`
+            INSERT INTO task_dependencies (
+              task_id,
+              depends_on_task_id
+            )
 
-          :createdAt,
-          :updatedAt,
+            VALUES (
+              :taskId,
+              :dependsOnTaskId
+            )
+          `);
 
-          NULL,
-          NULL,
-          NULL,
-          NULL
-        )
-      `)
-      .run({
-        id,
+      for (
+        const dependencyId
+        of dependencies
+      ) {
+        insertDependency.run({
+          taskId:
+            id,
 
-        projectId:
-          input.projectId ??
-          null,
+          dependsOnTaskId:
+            dependencyId,
+        });
+      }
 
-        title:
-          input.title,
+      this.database.exec(
+        "COMMIT;",
+      );
+    } catch (error) {
+      this.database.exec(
+        "ROLLBACK;",
+      );
 
-        description:
-          input.description ??
-          null,
-
-        kind:
-          input.kind ??
-          "manual",
-
-        requiredRole:
-          input.requiredRole ??
-          null,
-
-        payloadJson:
-          JSON.stringify(
-            input.payload ??
-              {},
-          ),
-
-        createdAt:
-          timestamp,
-
-        updatedAt:
-          timestamp,
-      });
+      throw error;
+    }
 
     return this.getTaskById(
       id,
@@ -743,7 +883,9 @@ export class CoordinatorStore {
       );
     }
 
-    return toTask(row);
+    return this.toTaskRecord(
+      row,
+    );
   }
 
   claimNextTask(
@@ -771,17 +913,38 @@ export class CoordinatorStore {
       const row =
         this.database
           .prepare(`
-            SELECT *
-            FROM tasks
+            SELECT task.*
+            FROM tasks AS task
 
             WHERE
-              status = 'pending'
-              AND required_role =
+              task.status = 'pending'
+
+              AND task.required_role =
                 :requiredRole
 
+              AND NOT EXISTS (
+                SELECT 1
+
+                FROM task_dependencies
+                  AS dependency
+
+                INNER JOIN tasks
+                  AS prerequisite
+
+                  ON prerequisite.id =
+                    dependency.depends_on_task_id
+
+                WHERE
+                  dependency.task_id =
+                    task.id
+
+                  AND prerequisite.status <>
+                    'completed'
+              )
+
             ORDER BY
-              created_at ASC,
-              id ASC
+              task.created_at ASC,
+              task.id ASC
 
             LIMIT 1
           `)
@@ -815,7 +978,29 @@ export class CoordinatorStore {
 
             WHERE
               id = :id
-              AND status = 'pending'
+
+              AND status =
+                'pending'
+
+              AND NOT EXISTS (
+                SELECT 1
+
+                FROM task_dependencies
+                  AS dependency
+
+                INNER JOIN tasks
+                  AS prerequisite
+
+                  ON prerequisite.id =
+                    dependency.depends_on_task_id
+
+                WHERE
+                  dependency.task_id =
+                    tasks.id
+
+                  AND prerequisite.status <>
+                    'completed'
+              )
           `)
           .run({
             id,
@@ -826,7 +1011,9 @@ export class CoordinatorStore {
               timestamp,
           });
 
-      if (update.changes !== 1) {
+      if (
+        update.changes !== 1
+      ) {
         this.database.exec(
           "ROLLBACK;",
         );
@@ -862,8 +1049,10 @@ export class CoordinatorStore {
     const timestamp = now();
 
     if (
-      input.projectId !== undefined &&
-      input.projectId !== null
+      input.projectId !==
+        undefined &&
+      input.projectId !==
+        null
     ) {
       this.getProjectById(
         input.projectId,
@@ -935,21 +1124,34 @@ export class CoordinatorStore {
 
         SET
           title = :title,
-          description = :description,
-          project_id = :projectId,
-          status = :status,
+
+          description =
+            :description,
+
+          project_id =
+            :projectId,
+
+          status =
+            :status,
+
           assigned_agent_id =
             :assignedAgentId,
+
           failure_reason =
             :failureReason,
+
           updated_at =
             :updatedAt,
+
           started_at =
             :startedAt,
+
           completed_at =
             :completedAt,
+
           failed_at =
             :failedAt,
+
           cancelled_at =
             :cancelledAt
 
@@ -1003,6 +1205,51 @@ export class CoordinatorStore {
 
     return this.getTaskById(
       id,
+    );
+  }
+
+  private getTaskDependencyIds(
+    taskId: string,
+  ): readonly string[] {
+    const rows =
+      this.database
+        .prepare(`
+          SELECT
+            depends_on_task_id
+
+          FROM task_dependencies
+
+          WHERE
+            task_id = :taskId
+
+          ORDER BY
+            depends_on_task_id ASC
+        `)
+        .all({
+          taskId,
+        }) as Row[];
+
+    return rows.map(
+      (row) =>
+        String(
+          row.depends_on_task_id,
+        ),
+    );
+  }
+
+  private toTaskRecord(
+    row: Row,
+  ): TaskRecord {
+    const id =
+      String(
+        row.id,
+      );
+
+    return toTask(
+      row,
+      this.getTaskDependencyIds(
+        id,
+      ),
     );
   }
 }
