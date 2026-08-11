@@ -2,6 +2,8 @@ export * from "./agent-smoke.js";
 export * from "./agent-smoke-config.js";
 export * from "./bounded-movement.js";
 export * from "./bounded-writes.js";
+export * from "./builder-worker.js";
+export * from "./builder-worker-config.js";
 export * from "./collector-worker.js";
 export * from "./collector-worker-config.js";
 export * from "./config.js";
