@@ -10,9 +10,12 @@ import {
   isTaskStatus,
 } from "@mineagents/sdk";
 
-import { MineflayerDriverError } from "./errors.js";
+import {
+  MineflayerDriverError,
+} from "./errors.js";
 
-type JsonRecord = Record<string, unknown>;
+type JsonRecord =
+  Record<string, unknown>;
 
 export interface CoordinatorWorkerClientOptions {
   baseUrl: string;
@@ -43,7 +46,8 @@ const requiredString = (
   key: string,
   label: string,
 ): string => {
-  const value = record[key];
+  const value =
+    record[key];
 
   if (
     typeof value !== "string" ||
@@ -63,13 +67,18 @@ const nullableString = (
   key: string,
   label: string,
 ): string | null => {
-  const value = record[key];
+  const value =
+    record[key];
 
-  if (value === null) {
+  if (
+    value === null
+  ) {
     return null;
   }
 
-  if (typeof value !== "string") {
+  if (
+    typeof value !== "string"
+  ) {
     throw new MineflayerDriverError(
       "CONNECTION_FAILED",
       `Coordinator returned an invalid ${label}.${key}.`,
@@ -79,12 +88,57 @@ const nullableString = (
   return value;
 };
 
+const stringArray = (
+  record: JsonRecord,
+  key: string,
+  label: string,
+): readonly string[] => {
+  const value =
+    record[key];
+
+  if (
+    !Array.isArray(value)
+  ) {
+    throw new MineflayerDriverError(
+      "CONNECTION_FAILED",
+      `Coordinator returned an invalid ${label}.${key}.`,
+    );
+  }
+
+  return value.map(
+    (
+      item,
+      index,
+    ) => {
+      if (
+        typeof item !== "string" ||
+        item.trim().length === 0
+      ) {
+        throw new MineflayerDriverError(
+          "CONNECTION_FAILED",
+          `Coordinator returned an invalid ${label}.${key}[${index}].`,
+        );
+      }
+
+      return item;
+    },
+  );
+};
+
 const parseAgent = (
   value: unknown,
 ): AgentRecord => {
-  const record = asRecord(value, "agent");
+  const record =
+    asRecord(
+      value,
+      "agent",
+    );
 
-  if (!isAgentStatus(record.status)) {
+  if (
+    !isAgentStatus(
+      record.status,
+    )
+  ) {
     throw new MineflayerDriverError(
       "CONNECTION_FAILED",
       "Coordinator returned an invalid agent.status.",
@@ -92,41 +146,78 @@ const parseAgent = (
   }
 
   return {
-    id: requiredString(record, "id", "agent"),
-    name: requiredString(record, "name", "agent"),
-    role: nullableString(record, "role", "agent"),
-    status: record.status,
-    lastHeartbeatAt: requiredString(
-      record,
-      "lastHeartbeatAt",
-      "agent",
-    ),
-    createdAt: requiredString(
-      record,
-      "createdAt",
-      "agent",
-    ),
-    updatedAt: requiredString(
-      record,
-      "updatedAt",
-      "agent",
-    ),
+    id:
+      requiredString(
+        record,
+        "id",
+        "agent",
+      ),
+
+    name:
+      requiredString(
+        record,
+        "name",
+        "agent",
+      ),
+
+    role:
+      nullableString(
+        record,
+        "role",
+        "agent",
+      ),
+
+    status:
+      record.status,
+
+    lastHeartbeatAt:
+      requiredString(
+        record,
+        "lastHeartbeatAt",
+        "agent",
+      ),
+
+    createdAt:
+      requiredString(
+        record,
+        "createdAt",
+        "agent",
+      ),
+
+    updatedAt:
+      requiredString(
+        record,
+        "updatedAt",
+        "agent",
+      ),
   };
 };
 
 const parseTask = (
   value: unknown,
 ): TaskRecord => {
-  const task = asRecord(value, "task");
+  const task =
+    asRecord(
+      value,
+      "task",
+    );
 
-  if (!isTaskStatus(task.status)) {
+  if (
+    !isTaskStatus(
+      task.status,
+    )
+  ) {
     throw new MineflayerDriverError(
       "CONNECTION_FAILED",
       "Coordinator returned an invalid task.status.",
     );
   }
 
-  if (!isTaskKind(task.kind)) {
+  if (
+    !isTaskKind(
+      task.kind,
+    )
+  ) {
     throw new MineflayerDriverError(
       "CONNECTION_FAILED",
       "Coordinator returned an invalid task.kind.",
@@ -135,8 +226,11 @@ const parseTask = (
 
   if (
     task.payload === null ||
-    typeof task.payload !== "object" ||
-    Array.isArray(task.payload)
+    typeof task.payload !==
+      "object" ||
+    Array.isArray(
+      task.payload,
+    )
   ) {
     throw new MineflayerDriverError(
       "CONNECTION_FAILED",
@@ -145,146 +239,212 @@ const parseTask = (
   }
 
   return {
-    id: requiredString(task, "id", "task"),
+    id:
+      requiredString(
+        task,
+        "id",
+        "task",
+      ),
 
-    projectId: nullableString(
-      task,
-      "projectId",
-      "task",
-    ),
+    projectId:
+      nullableString(
+        task,
+        "projectId",
+        "task",
+      ),
 
-    title: requiredString(
-      task,
-      "title",
-      "task",
-    ),
+    title:
+      requiredString(
+        task,
+        "title",
+        "task",
+      ),
 
-    description: nullableString(
-      task,
-      "description",
-      "task",
-    ),
+    description:
+      nullableString(
+        task,
+        "description",
+        "task",
+      ),
 
-    kind: task.kind,
+    kind:
+      task.kind,
 
-    requiredRole: nullableString(
-      task,
-      "requiredRole",
-      "task",
-    ),
+    requiredRole:
+      nullableString(
+        task,
+        "requiredRole",
+        "task",
+      ),
 
-    payload: task.payload as Record<string, unknown>,
+    payload:
+      task.payload as Record<
+        string,
+        unknown
+      >,
 
-    status: task.status,
+    dependsOnTaskIds:
+      stringArray(
+        task,
+        "dependsOnTaskIds",
+        "task",
+      ),
 
-    assignedAgentId: nullableString(
-      task,
-      "assignedAgentId",
-      "task",
-    ),
+    status:
+      task.status,
 
-    failureReason: nullableString(
-      task,
-      "failureReason",
-      "task",
-    ),
+    assignedAgentId:
+      nullableString(
+        task,
+        "assignedAgentId",
+        "task",
+      ),
 
-    createdAt: requiredString(
-      task,
-      "createdAt",
-      "task",
-    ),
+    failureReason:
+      nullableString(
+        task,
+        "failureReason",
+        "task",
+      ),
 
-    updatedAt: requiredString(
-      task,
-      "updatedAt",
-      "task",
-    ),
+    createdAt:
+      requiredString(
+        task,
+        "createdAt",
+        "task",
+      ),
 
-    startedAt: nullableString(
-      task,
-      "startedAt",
-      "task",
-    ),
+    updatedAt:
+      requiredString(
+        task,
+        "updatedAt",
+        "task",
+      ),
 
-    completedAt: nullableString(
-      task,
-      "completedAt",
-      "task",
-    ),
+    startedAt:
+      nullableString(
+        task,
+        "startedAt",
+        "task",
+      ),
 
-    failedAt: nullableString(
-      task,
-      "failedAt",
-      "task",
-    ),
+    completedAt:
+      nullableString(
+        task,
+        "completedAt",
+        "task",
+      ),
 
-    cancelledAt: nullableString(
-      task,
-      "cancelledAt",
-      "task",
-    ),
+    failedAt:
+      nullableString(
+        task,
+        "failedAt",
+        "task",
+      ),
+
+    cancelledAt:
+      nullableString(
+        task,
+        "cancelledAt",
+        "task",
+      ),
   };
 };
 
 export class CoordinatorWorkerClient {
-  private readonly baseUrl: string;
-  private readonly timeoutMs: number;
-  private readonly fetchImplementation: typeof globalThis.fetch;
+  private readonly baseUrl:
+    string;
+
+  private readonly timeoutMs:
+    number;
+
+  private readonly fetchImplementation:
+    typeof globalThis.fetch;
 
   constructor(
-    options: CoordinatorWorkerClientOptions,
+    options:
+      CoordinatorWorkerClientOptions,
   ) {
-    this.baseUrl = options.baseUrl.replace(/\/+$/, "");
-    this.timeoutMs = options.timeoutMs ?? 5_000;
+    this.baseUrl =
+      options.baseUrl.replace(
+        /\/+$/,
+        "",
+      );
+
+    this.timeoutMs =
+      options.timeoutMs ??
+      5_000;
+
     this.fetchImplementation =
-      options.fetch ?? globalThis.fetch;
+      options.fetch ??
+      globalThis.fetch;
   }
 
-  async heartbeat(input: {
-    id: string;
-    name: string;
-    role: string;
-  }): Promise<AgentRecord> {
-    const response = asRecord(
-      await this.request(
-        "/agents/heartbeat",
-        {
-          method: "POST",
-          body: JSON.stringify(input),
-        },
-      ),
-      "heartbeat response",
-    );
+  async heartbeat(
+    input: {
+      id: string;
+      name: string;
+      role: string;
+    },
+  ): Promise<AgentRecord> {
+    const response =
+      asRecord(
+        await this.request(
+          "/agents/heartbeat",
+          {
+            method:
+              "POST",
 
-    return parseAgent(response.agent);
+            body:
+              JSON.stringify(
+                input,
+              ),
+          },
+        ),
+
+        "heartbeat response",
+      );
+
+    return parseAgent(
+      response.agent,
+    );
   }
 
   async claimTask(
     agentId: string,
-  ): Promise<TaskRecord | null> {
-    let response: Response;
+  ): Promise<
+    TaskRecord | null
+  > {
+    let response:
+      Response;
 
     try {
-      response = await this.fetchImplementation(
-        `${this.baseUrl}/tasks/claim`,
-        {
-          method: "POST",
+      response =
+        await this.fetchImplementation(
+          `${this.baseUrl}/tasks/claim`,
+          {
+            method:
+              "POST",
 
-          headers: {
-            accept: "application/json",
-            "content-type": "application/json",
+            headers: {
+              accept:
+                "application/json",
+
+              "content-type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                agentId,
+              }),
+
+            signal:
+              AbortSignal.timeout(
+                this.timeoutMs,
+              ),
           },
-
-          body: JSON.stringify({
-            agentId,
-          }),
-
-          signal: AbortSignal.timeout(
-            this.timeoutMs,
-          ),
-        },
-      );
+        );
     } catch (error) {
       throw new MineflayerDriverError(
         "CONNECTION_FAILED",
@@ -296,68 +456,94 @@ export class CoordinatorWorkerClient {
       );
     }
 
-    if (response.status === 404) {
+    if (
+      response.status ===
+      404
+    ) {
       return null;
     }
 
-    if (!response.ok) {
+    if (
+      !response.ok
+    ) {
       throw new MineflayerDriverError(
         "CONNECTION_FAILED",
         `Coordinator task claim failed with HTTP ${response.status}.`,
       );
     }
 
-    const body = asRecord(
-      await response.json(),
-      "task claim response",
-    );
+    const body =
+      asRecord(
+        await response.json(),
+        "task claim response",
+      );
 
-    return parseTask(body.task);
+    return parseTask(
+      body.task,
+    );
   }
 
   async patchTask(
     taskId: string,
     input: {
       status?: TaskStatus;
-      failureReason?: string | null;
+      failureReason?:
+        string | null;
     },
   ): Promise<TaskRecord> {
-    const response = asRecord(
-      await this.request(
-        `/tasks/${encodeURIComponent(taskId)}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify(input),
-        },
-      ),
-      "task patch response",
-    );
+    const response =
+      asRecord(
+        await this.request(
+          `/tasks/${encodeURIComponent(
+            taskId,
+          )}`,
+          {
+            method:
+              "PATCH",
 
-    return parseTask(response.task);
+            body:
+              JSON.stringify(
+                input,
+              ),
+          },
+        ),
+
+        "task patch response",
+      );
+
+    return parseTask(
+      response.task,
+    );
   }
 
   private async request(
     path: string,
     init: RequestInit,
   ): Promise<unknown> {
-    let response: Response;
+    let response:
+      Response;
 
     try {
-      response = await this.fetchImplementation(
-        `${this.baseUrl}${path}`,
-        {
-          ...init,
+      response =
+        await this.fetchImplementation(
+          `${this.baseUrl}${path}`,
+          {
+            ...init,
 
-          headers: {
-            accept: "application/json",
-            "content-type": "application/json",
+            headers: {
+              accept:
+                "application/json",
+
+              "content-type":
+                "application/json",
+            },
+
+            signal:
+              AbortSignal.timeout(
+                this.timeoutMs,
+              ),
           },
-
-          signal: AbortSignal.timeout(
-            this.timeoutMs,
-          ),
-        },
-      );
+        );
     } catch (error) {
       throw new MineflayerDriverError(
         "CONNECTION_FAILED",
@@ -369,7 +555,9 @@ export class CoordinatorWorkerClient {
       );
     }
 
-    if (!response.ok) {
+    if (
+      !response.ok
+    ) {
       throw new MineflayerDriverError(
         "CONNECTION_FAILED",
         `Coordinator request '${path}' failed with HTTP ${response.status}.`,

@@ -4,159 +4,266 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
 import { test } from "node:test";
-import { createCoordinatorServer } from "../coordinator/dist/index.js";
 
-const listen = async (server) => {
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
+import {
+  createCoordinatorServer,
+} from "../coordinator/dist/index.js";
 
-  const address = server.address();
+const listen = async (
+  server,
+) => {
+  server.listen(
+    0,
+    "127.0.0.1",
+  );
 
-  if (!address || typeof address === "string") {
-    throw new Error("Expected an IPv4 server address.");
+  await once(
+    server,
+    "listening",
+  );
+
+  const address =
+    server.address();
+
+  if (
+    !address ||
+    typeof address ===
+      "string"
+  ) {
+    throw new Error(
+      "Expected an IPv4 server address.",
+    );
   }
 
   return address.port;
 };
 
-const close = async (server) => {
-  await new Promise((resolve, reject) => {
-    server.close((error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
+const close = async (
+  server,
+) => {
+  await new Promise(
+    (
+      resolve,
+      reject,
+    ) => {
+      server.close(
+        (error) => {
+          if (error) {
+            reject(
+              error,
+            );
 
-      resolve();
-    });
-  });
+            return;
+          }
+
+          resolve();
+        },
+      );
+    },
+  );
 };
 
-test("coordinator persists and serves the main task lifecycle", async (t) => {
-  const tempDir = await mkdtemp(
-    join(tmpdir(), "mineagents-coordinator-"),
-  );
+const postJson = async (
+  baseUrl,
+  path,
+  payload,
+) =>
+  globalThis.fetch(
+    `${baseUrl}${path}`,
+    {
+      method:
+        "POST",
 
-  const logs = [];
+      headers: {
+        "content-type":
+          "application/json",
+      },
 
-  const server = createCoordinatorServer({
-    dbPath: join(tempDir, "coordinator.sqlite"),
-    logger: {
-      info: (event, fields) =>
-        logs.push({
-          level: "info",
-          event,
-          ...fields,
-        }),
-
-      error: (event, fields) =>
-        logs.push({
-          level: "error",
-          event,
-          ...fields,
-        }),
+      body:
+        JSON.stringify(
+          payload,
+        ),
     },
-  });
-
-  const port = await listen(server);
-  const baseUrl = `http://127.0.0.1:${port}`;
-
-  t.after(async () => {
-    await close(server);
-
-    await rm(tempDir, {
-      recursive: true,
-      force: true,
-    });
-  });
-
-  const healthResponse = await globalThis.fetch(
-    `${baseUrl}/health`,
   );
 
-  assert.equal(
-    healthResponse.status,
-    200,
+const patchJson = async (
+  baseUrl,
+  path,
+  payload,
+) =>
+  globalThis.fetch(
+    `${baseUrl}${path}`,
+    {
+      method:
+        "PATCH",
+
+      headers: {
+        "content-type":
+          "application/json",
+      },
+
+      body:
+        JSON.stringify(
+          payload,
+        ),
+    },
   );
 
-  assert.match(
-    healthResponse.headers.get("x-request-id"),
-    /^[0-9a-f-]{36}$/,
-  );
+test(
+  "coordinator persists and serves the main task lifecycle",
+  async (t) => {
+    const tempDir =
+      await mkdtemp(
+        join(
+          tmpdir(),
+          "mineagents-coordinator-",
+        ),
+      );
 
-  const health =
-    await healthResponse.json();
+    const logs = [];
 
-  assert.equal(
-    health.status,
-    "ok",
-  );
+    const server =
+      createCoordinatorServer({
+        dbPath:
+          join(
+            tempDir,
+            "coordinator.sqlite",
+          ),
 
-  const projectResponse =
-    await globalThis.fetch(
-      `${baseUrl}/projects`,
-      {
-        method: "POST",
+        logger: {
+          info:
+            (
+              event,
+              fields,
+            ) =>
+              logs.push({
+                level:
+                  "info",
 
-        headers: {
-          "content-type":
-            "application/json",
+                event,
+
+                ...fields,
+              }),
+
+          error:
+            (
+              event,
+              fields,
+            ) =>
+              logs.push({
+                level:
+                  "error",
+
+                event,
+
+                ...fields,
+              }),
         },
+      });
 
-        body: JSON.stringify({
-          name: "Starter base",
+    const port =
+      await listen(
+        server,
+      );
+
+    const baseUrl =
+      `http://127.0.0.1:${port}`;
+
+    t.after(
+      async () => {
+        await close(
+          server,
+        );
+
+        await rm(
+          tempDir,
+          {
+            recursive:
+              true,
+
+            force:
+              true,
+          },
+        );
+      },
+    );
+
+    const healthResponse =
+      await globalThis.fetch(
+        `${baseUrl}/health`,
+      );
+
+    assert.equal(
+      healthResponse.status,
+      200,
+    );
+
+    assert.match(
+      healthResponse.headers.get(
+        "x-request-id",
+      ),
+      /^[0-9a-f-]{36}$/,
+    );
+
+    const health =
+      await healthResponse.json();
+
+    assert.equal(
+      health.status,
+      "ok",
+    );
+
+    const projectResponse =
+      await postJson(
+        baseUrl,
+        "/projects",
+        {
+          name:
+            "Starter base",
+
           description:
             "Initial staging project",
-        }),
-      },
+        },
+      );
+
+    assert.equal(
+      projectResponse.status,
+      201,
     );
 
-  assert.equal(
-    projectResponse.status,
-    201,
-  );
+    const {
+      project,
+    } =
+      await projectResponse.json();
 
-  const { project } =
-    await projectResponse.json();
+    const agentResponse =
+      await postJson(
+        baseUrl,
+        "/agents/heartbeat",
+        {
+          name:
+            "collector-01",
 
-  const agentResponse =
-    await globalThis.fetch(
-      `${baseUrl}/agents/heartbeat`,
-      {
-        method: "POST",
-
-        headers: {
-          "content-type":
-            "application/json",
+          role:
+            "collector",
         },
+      );
 
-        body: JSON.stringify({
-          name: "collector-01",
-          role: "collector",
-        }),
-      },
+    assert.equal(
+      agentResponse.status,
+      200,
     );
 
-  assert.equal(
-    agentResponse.status,
-    200,
-  );
+    const {
+      agent,
+    } =
+      await agentResponse.json();
 
-  const { agent } =
-    await agentResponse.json();
-
-  const taskResponse =
-    await globalThis.fetch(
-      `${baseUrl}/tasks`,
-      {
-        method: "POST",
-
-        headers: {
-          "content-type":
-            "application/json",
-        },
-
-        body: JSON.stringify({
+    const taskResponse =
+      await postJson(
+        baseUrl,
+        "/tasks",
+        {
           title:
             "Gather starter resources",
 
@@ -176,340 +283,824 @@ test("coordinator persists and serves the main task lifecycle", async (t) => {
             blockName:
               "minecraft:oak_log",
 
-            quantity: 2,
+            quantity:
+              2,
           },
-        }),
+        },
+      );
+
+    assert.equal(
+      taskResponse.status,
+      201,
+    );
+
+    const createdTaskBody =
+      await taskResponse.json();
+
+    assert.equal(
+      createdTaskBody
+        .task
+        .status,
+      "pending",
+    );
+
+    assert.equal(
+      createdTaskBody
+        .task
+        .kind,
+      "collect-blocks",
+    );
+
+    assert.equal(
+      createdTaskBody
+        .task
+        .requiredRole,
+      "collector",
+    );
+
+    assert.deepEqual(
+      createdTaskBody
+        .task
+        .payload,
+      {
+        blockName:
+          "minecraft:oak_log",
+
+        quantity:
+          2,
       },
     );
 
-  assert.equal(
-    taskResponse.status,
-    201,
-  );
+    assert.deepEqual(
+      createdTaskBody
+        .task
+        .dependsOnTaskIds,
+      [],
+    );
 
-  const createdTaskBody =
-    await taskResponse.json();
-
-  assert.equal(
-    createdTaskBody.task.status,
-    "pending",
-  );
-
-  assert.equal(
-    createdTaskBody.task.kind,
-    "collect-blocks",
-  );
-
-  assert.equal(
-    createdTaskBody.task.requiredRole,
-    "collector",
-  );
-
-  assert.deepEqual(
-    createdTaskBody.task.payload,
-    {
-      blockName:
-        "minecraft:oak_log",
-
-      quantity: 2,
-    },
-  );
-
-  const claimResponse =
-    await globalThis.fetch(
-      `${baseUrl}/tasks/claim`,
-      {
-        method: "POST",
-
-        headers: {
-          "content-type":
-            "application/json",
-        },
-
-        body: JSON.stringify({
+    const claimResponse =
+      await postJson(
+        baseUrl,
+        "/tasks/claim",
+        {
           agentId:
             agent.id,
-        }),
+        },
+      );
+
+    assert.equal(
+      claimResponse.status,
+      200,
+    );
+
+    const claimedBody =
+      await claimResponse.json();
+
+    assert.equal(
+      claimedBody
+        .task
+        .status,
+      "assigned",
+    );
+
+    assert.equal(
+      claimedBody
+        .task
+        .assignedAgentId,
+      agent.id,
+    );
+
+    assert.equal(
+      claimedBody
+        .task
+        .requiredRole,
+      "collector",
+    );
+
+    assert.deepEqual(
+      claimedBody
+        .task
+        .dependsOnTaskIds,
+      [],
+    );
+
+    const startResponse =
+      await patchJson(
+        baseUrl,
+        `/tasks/${claimedBody.task.id}`,
+        {
+          status:
+            "running",
+        },
+      );
+
+    assert.equal(
+      startResponse.status,
+      200,
+    );
+
+    const startedBody =
+      await startResponse.json();
+
+    assert.equal(
+      startedBody
+        .task
+        .status,
+      "running",
+    );
+
+    assert.equal(
+      typeof startedBody
+        .task
+        .startedAt,
+      "string",
+    );
+
+    const patchResponse =
+      await patchJson(
+        baseUrl,
+        `/tasks/${claimedBody.task.id}`,
+        {
+          status:
+            "completed",
+        },
+      );
+
+    assert.equal(
+      patchResponse.status,
+      200,
+    );
+
+    const patchedBody =
+      await patchResponse.json();
+
+    assert.equal(
+      patchedBody
+        .task
+        .status,
+      "completed",
+    );
+
+    const invalidTransitionResponse =
+      await patchJson(
+        baseUrl,
+        `/tasks/${claimedBody.task.id}`,
+        {
+          status:
+            "running",
+        },
+      );
+
+    assert.equal(
+      invalidTransitionResponse.status,
+      409,
+    );
+
+    const tasksResponse =
+      await globalThis.fetch(
+        `${baseUrl}/tasks`,
+      );
+
+    assert.equal(
+      tasksResponse.status,
+      200,
+    );
+
+    const tasks =
+      await tasksResponse.json();
+
+    assert.equal(
+      tasks.tasks.length,
+      1,
+    );
+
+    assert.equal(
+      tasks.tasks[0]
+        .status,
+      "completed",
+    );
+
+    assert.equal(
+      tasks.tasks[0]
+        .kind,
+      "collect-blocks",
+    );
+
+    assert.equal(
+      tasks.tasks[0]
+        .requiredRole,
+      "collector",
+    );
+
+    assert.deepEqual(
+      tasks.tasks[0]
+        .dependsOnTaskIds,
+      [],
+    );
+
+    const metricsResponse =
+      await globalThis.fetch(
+        `${baseUrl}/metrics`,
+      );
+
+    assert.equal(
+      metricsResponse.status,
+      200,
+    );
+
+    assert.match(
+      metricsResponse.headers.get(
+        "content-type",
+      ),
+      /text\/plain/,
+    );
+
+    const metrics =
+      await metricsResponse.text();
+
+    assert.match(
+      metrics,
+      /mineagents_coordinator_tasks{service="coordinator"} 1/,
+    );
+
+    assert.match(
+      metrics,
+      /route="\/tasks\/:id"/,
+    );
+
+    assert.doesNotMatch(
+      metrics,
+      new RegExp(
+        claimedBody
+          .task
+          .id,
+      ),
+    );
+
+    assert.equal(
+      logs.some(
+        (entry) =>
+          entry.event ===
+            "http.request" &&
+          entry.route ===
+            "/tasks/:id",
+      ),
+      true,
+    );
+  },
+);
+
+test(
+  "coordinator rejects invalid task payloads",
+  async (t) => {
+    const tempDir =
+      await mkdtemp(
+        join(
+          tmpdir(),
+          "mineagents-coordinator-",
+        ),
+      );
+
+    const server =
+      createCoordinatorServer({
+        dbPath:
+          join(
+            tempDir,
+            "coordinator.sqlite",
+          ),
+      });
+
+    const port =
+      await listen(
+        server,
+      );
+
+    const baseUrl =
+      `http://127.0.0.1:${port}`;
+
+    t.after(
+      async () => {
+        await close(
+          server,
+        );
+
+        await rm(
+          tempDir,
+          {
+            recursive:
+              true,
+
+            force:
+              true,
+          },
+        );
       },
     );
 
-  assert.equal(
-    claimResponse.status,
-    200,
-  );
-
-  const claimedBody =
-    await claimResponse.json();
-
-  assert.equal(
-    claimedBody.task.status,
-    "assigned",
-  );
-
-  assert.equal(
-    claimedBody.task.assignedAgentId,
-    agent.id,
-  );
-
-  assert.equal(
-    claimedBody.task.requiredRole,
-    "collector",
-  );
-
-  const startResponse =
-    await globalThis.fetch(
-      `${baseUrl}/tasks/${claimedBody.task.id}`,
-      {
-        method: "PATCH",
-
-        headers: {
-          "content-type":
-            "application/json",
-        },
-
-        body: JSON.stringify({
-          status: "running",
-        }),
-      },
-    );
-
-  assert.equal(
-    startResponse.status,
-    200,
-  );
-
-  const startedBody =
-    await startResponse.json();
-
-  assert.equal(
-    startedBody.task.status,
-    "running",
-  );
-
-  assert.equal(
-    typeof startedBody.task.startedAt,
-    "string",
-  );
-
-  const patchResponse =
-    await globalThis.fetch(
-      `${baseUrl}/tasks/${claimedBody.task.id}`,
-      {
-        method: "PATCH",
-
-        headers: {
-          "content-type":
-            "application/json",
-        },
-
-        body: JSON.stringify({
-          status: "completed",
-        }),
-      },
-    );
-
-  assert.equal(
-    patchResponse.status,
-    200,
-  );
-
-  const patchedBody =
-    await patchResponse.json();
-
-  assert.equal(
-    patchedBody.task.status,
-    "completed",
-  );
-
-  const invalidTransitionResponse =
-    await globalThis.fetch(
-      `${baseUrl}/tasks/${claimedBody.task.id}`,
-      {
-        method: "PATCH",
-
-        headers: {
-          "content-type":
-            "application/json",
-        },
-
-        body: JSON.stringify({
-          status: "running",
-        }),
-      },
-    );
-
-  assert.equal(
-    invalidTransitionResponse.status,
-    409,
-  );
-
-  const tasksResponse =
-    await globalThis.fetch(
-      `${baseUrl}/tasks`,
-    );
-
-  assert.equal(
-    tasksResponse.status,
-    200,
-  );
-
-  const tasks =
-    await tasksResponse.json();
-
-  assert.equal(
-    tasks.tasks.length,
-    1,
-  );
-
-  assert.equal(
-    tasks.tasks[0].status,
-    "completed",
-  );
-
-  assert.equal(
-    tasks.tasks[0].kind,
-    "collect-blocks",
-  );
-
-  assert.equal(
-    tasks.tasks[0].requiredRole,
-    "collector",
-  );
-
-  const metricsResponse =
-    await globalThis.fetch(
-      `${baseUrl}/metrics`,
-    );
-
-  assert.equal(
-    metricsResponse.status,
-    200,
-  );
-
-  assert.match(
-    metricsResponse.headers.get(
-      "content-type",
-    ),
-    /text\/plain/,
-  );
-
-  const metrics =
-    await metricsResponse.text();
-
-  assert.match(
-    metrics,
-    /mineagents_coordinator_tasks\{service="coordinator"} 1/,
-  );
-
-  assert.match(
-    metrics,
-    /route="\/tasks\/:id"/,
-  );
-
-  assert.doesNotMatch(
-    metrics,
-    new RegExp(
-      claimedBody.task.id,
-    ),
-  );
-
-  assert.equal(
-    logs.some(
-      (entry) =>
-        entry.event ===
-          "http.request" &&
-        entry.route ===
-          "/tasks/:id",
-    ),
-    true,
-  );
-});
-
-test("coordinator rejects invalid task payloads", async (t) => {
-  const tempDir = await mkdtemp(
-    join(tmpdir(), "mineagents-coordinator-"),
-  );
-
-  const server = createCoordinatorServer({
-    dbPath: join(
-      tempDir,
-      "coordinator.sqlite",
-    ),
-  });
-
-  const port =
-    await listen(server);
-
-  const baseUrl =
-    `http://127.0.0.1:${port}`;
-
-  t.after(async () => {
-    await close(server);
-
-    await rm(tempDir, {
-      recursive: true,
-      force: true,
-    });
-  });
-
-  const response =
-    await globalThis.fetch(
-      `${baseUrl}/tasks`,
-      {
-        method: "POST",
-
-        headers: {
-          "content-type":
-            "application/json",
-        },
-
-        body: JSON.stringify({
+    const response =
+      await postJson(
+        baseUrl,
+        "/tasks",
+        {
           description:
             "missing title",
-        }),
-      },
-    );
-
-  assert.equal(
-    response.status,
-    400,
-  );
-
-  const body =
-    await response.json();
-
-  assert.equal(
-    body.error.code,
-    "VALIDATION_ERROR",
-  );
-
-  const invalidPatchResponse =
-    await globalThis.fetch(
-      `${baseUrl}/tasks/missing`,
-      {
-        method: "PATCH",
-
-        headers: {
-          "content-type":
-            "application/json",
         },
+      );
 
-        body: JSON.stringify({
-          title: 42,
-        }),
+    assert.equal(
+      response.status,
+      400,
+    );
+
+    const body =
+      await response.json();
+
+    assert.equal(
+      body.error.code,
+      "VALIDATION_ERROR",
+    );
+
+    const invalidPatchResponse =
+      await patchJson(
+        baseUrl,
+        "/tasks/missing",
+        {
+          title:
+            42,
+        },
+      );
+
+    assert.equal(
+      invalidPatchResponse.status,
+      400,
+    );
+
+    const invalidPatchBody =
+      await invalidPatchResponse.json();
+
+    assert.equal(
+      invalidPatchBody
+        .error
+        .code,
+      "VALIDATION_ERROR",
+    );
+
+    const invalidDependenciesResponse =
+      await postJson(
+        baseUrl,
+        "/tasks",
+        {
+          title:
+            "Invalid dependencies",
+
+          dependsOnTaskIds:
+            "task-1",
+        },
+      );
+
+    assert.equal(
+      invalidDependenciesResponse.status,
+      400,
+    );
+
+    const invalidDependenciesBody =
+      await invalidDependenciesResponse.json();
+
+    assert.equal(
+      invalidDependenciesBody
+        .error
+        .code,
+      "VALIDATION_ERROR",
+    );
+
+    const missingDependencyResponse =
+      await postJson(
+        baseUrl,
+        "/tasks",
+        {
+          title:
+            "Depends on missing task",
+
+          kind:
+            "build-blueprint",
+
+          requiredRole:
+            "builder",
+
+          dependsOnTaskIds: [
+            "missing-task",
+          ],
+        },
+      );
+
+    assert.equal(
+      missingDependencyResponse.status,
+      404,
+    );
+  },
+);
+
+test(
+  "coordinator only claims tasks after every dependency is completed",
+  async (t) => {
+    const tempDir =
+      await mkdtemp(
+        join(
+          tmpdir(),
+          "mineagents-coordinator-dependencies-",
+        ),
+      );
+
+    const server =
+      createCoordinatorServer({
+        dbPath:
+          join(
+            tempDir,
+            "coordinator.sqlite",
+          ),
+      });
+
+    const port =
+      await listen(
+        server,
+      );
+
+    const baseUrl =
+      `http://127.0.0.1:${port}`;
+
+    t.after(
+      async () => {
+        await close(
+          server,
+        );
+
+        await rm(
+          tempDir,
+          {
+            recursive:
+              true,
+
+            force:
+              true,
+          },
+        );
       },
     );
 
-  assert.equal(
-    invalidPatchResponse.status,
-    400,
-  );
+    const collectorResponse =
+      await postJson(
+        baseUrl,
+        "/agents/heartbeat",
+        {
+          id:
+            "collector-1",
 
-  const invalidPatchBody =
-    await invalidPatchResponse.json();
+          name:
+            "Recolector1",
 
-  assert.equal(
-    invalidPatchBody.error.code,
-    "VALIDATION_ERROR",
-  );
-});
+          role:
+            "collector",
+        },
+      );
+
+    assert.equal(
+      collectorResponse.status,
+      200,
+    );
+
+    const builderResponse =
+      await postJson(
+        baseUrl,
+        "/agents/heartbeat",
+        {
+          id:
+            "builder-1",
+
+          name:
+            "Constructor1",
+
+          role:
+            "builder",
+        },
+      );
+
+    assert.equal(
+      builderResponse.status,
+      200,
+    );
+
+    const collectorTaskResponse =
+      await postJson(
+        baseUrl,
+        "/tasks",
+        {
+          title:
+            "Collect one oak log",
+
+          kind:
+            "collect-blocks",
+
+          requiredRole:
+            "collector",
+
+          payload: {
+            blockName:
+              "minecraft:oak_log",
+
+            quantity:
+              1,
+          },
+        },
+      );
+
+    assert.equal(
+      collectorTaskResponse.status,
+      201,
+    );
+
+    const {
+      task:
+        collectorTask,
+    } =
+      await collectorTaskResponse.json();
+
+    assert.deepEqual(
+      collectorTask
+        .dependsOnTaskIds,
+      [],
+    );
+
+    const builderTaskResponse =
+      await postJson(
+        baseUrl,
+        "/tasks",
+        {
+          title:
+            "Build with collected oak",
+
+          kind:
+            "build-blueprint",
+
+          requiredRole:
+            "builder",
+
+          payload: {
+            blueprintId:
+              "demo/dependency-test",
+          },
+
+          dependsOnTaskIds: [
+            collectorTask.id,
+          ],
+        },
+      );
+
+    assert.equal(
+      builderTaskResponse.status,
+      201,
+    );
+
+    const {
+      task:
+        builderTask,
+    } =
+      await builderTaskResponse.json();
+
+    assert.equal(
+      builderTask.status,
+      "pending",
+    );
+
+    assert.deepEqual(
+      builderTask
+        .dependsOnTaskIds,
+      [
+        collectorTask.id,
+      ],
+    );
+
+    /*
+     * Constructor1 ya tiene una tarea pendiente,
+     * pero no debe poder reclamarla porque A
+     * todavía no está completed.
+     */
+    const blockedBuilderClaim =
+      await postJson(
+        baseUrl,
+        "/tasks/claim",
+        {
+          agentId:
+            "builder-1",
+        },
+      );
+
+    assert.equal(
+      blockedBuilderClaim.status,
+      404,
+    );
+
+    const blockedBody =
+      await blockedBuilderClaim.json();
+
+    assert.equal(
+      blockedBody
+        .error
+        .code,
+      "NO_PENDING_TASKS",
+    );
+
+    /*
+     * Recolector1 sí puede reclamar la tarea A.
+     */
+    const collectorClaimResponse =
+      await postJson(
+        baseUrl,
+        "/tasks/claim",
+        {
+          agentId:
+            "collector-1",
+        },
+      );
+
+    assert.equal(
+      collectorClaimResponse.status,
+      200,
+    );
+
+    const {
+      task:
+        claimedCollectorTask,
+    } =
+      await collectorClaimResponse.json();
+
+    assert.equal(
+      claimedCollectorTask.id,
+      collectorTask.id,
+    );
+
+    assert.equal(
+      claimedCollectorTask.status,
+      "assigned",
+    );
+
+    /*
+     * Incluso con A assigned, B sigue bloqueada.
+     */
+    const builderClaimWhileAssigned =
+      await postJson(
+        baseUrl,
+        "/tasks/claim",
+        {
+          agentId:
+            "builder-1",
+        },
+      );
+
+    assert.equal(
+      builderClaimWhileAssigned.status,
+      404,
+    );
+
+    const startCollectorResponse =
+      await patchJson(
+        baseUrl,
+        `/tasks/${collectorTask.id}`,
+        {
+          status:
+            "running",
+        },
+      );
+
+    assert.equal(
+      startCollectorResponse.status,
+      200,
+    );
+
+    /*
+     * Incluso con A running, B sigue bloqueada.
+     */
+    const builderClaimWhileRunning =
+      await postJson(
+        baseUrl,
+        "/tasks/claim",
+        {
+          agentId:
+            "builder-1",
+        },
+      );
+
+    assert.equal(
+      builderClaimWhileRunning.status,
+      404,
+    );
+
+    const completeCollectorResponse =
+      await patchJson(
+        baseUrl,
+        `/tasks/${collectorTask.id}`,
+        {
+          status:
+            "completed",
+        },
+      );
+
+    assert.equal(
+      completeCollectorResponse.status,
+      200,
+    );
+
+    const {
+      task:
+        completedCollectorTask,
+    } =
+      await completeCollectorResponse.json();
+
+    assert.equal(
+      completedCollectorTask.status,
+      "completed",
+    );
+
+    /*
+     * En cuanto A está completed, Constructor1
+     * ya puede reclamar B.
+     */
+    const unlockedBuilderClaim =
+      await postJson(
+        baseUrl,
+        "/tasks/claim",
+        {
+          agentId:
+            "builder-1",
+        },
+      );
+
+    assert.equal(
+      unlockedBuilderClaim.status,
+      200,
+    );
+
+    const {
+      task:
+        claimedBuilderTask,
+    } =
+      await unlockedBuilderClaim.json();
+
+    assert.equal(
+      claimedBuilderTask.id,
+      builderTask.id,
+    );
+
+    assert.equal(
+      claimedBuilderTask.status,
+      "assigned",
+    );
+
+    assert.equal(
+      claimedBuilderTask
+        .assignedAgentId,
+      "builder-1",
+    );
+
+    assert.deepEqual(
+      claimedBuilderTask
+        .dependsOnTaskIds,
+      [
+        collectorTask.id,
+      ],
+    );
+
+    const tasksResponse =
+      await globalThis.fetch(
+        `${baseUrl}/tasks`,
+      );
+
+    assert.equal(
+      tasksResponse.status,
+      200,
+    );
+
+    const {
+      tasks,
+    } =
+      await tasksResponse.json();
+
+    const persistedBuilderTask =
+      tasks.find(
+        (task) =>
+          task.id ===
+          builderTask.id,
+      );
+
+    assert.ok(
+      persistedBuilderTask,
+    );
+
+    assert.deepEqual(
+      persistedBuilderTask
+        .dependsOnTaskIds,
+      [
+        collectorTask.id,
+      ],
+    );
+  },
+);
