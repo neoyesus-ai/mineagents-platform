@@ -879,11 +879,6 @@ test(
       ],
     );
 
-    /*
-     * Constructor1 ya tiene una tarea pendiente,
-     * pero no debe poder reclamarla porque A
-     * todavía no está completed.
-     */
     const blockedBuilderClaim =
       await postJson(
         baseUrl,
@@ -909,9 +904,6 @@ test(
       "NO_PENDING_TASKS",
     );
 
-    /*
-     * Recolector1 sí puede reclamar la tarea A.
-     */
     const collectorClaimResponse =
       await postJson(
         baseUrl,
@@ -943,9 +935,6 @@ test(
       "assigned",
     );
 
-    /*
-     * Incluso con A assigned, B sigue bloqueada.
-     */
     const builderClaimWhileAssigned =
       await postJson(
         baseUrl,
@@ -976,9 +965,6 @@ test(
       200,
     );
 
-    /*
-     * Incluso con A running, B sigue bloqueada.
-     */
     const builderClaimWhileRunning =
       await postJson(
         baseUrl,
@@ -1020,10 +1006,6 @@ test(
       "completed",
     );
 
-    /*
-     * En cuanto A está completed, Constructor1
-     * ya puede reclamar B.
-     */
     const unlockedBuilderClaim =
       await postJson(
         baseUrl,
@@ -1101,6 +1083,412 @@ test(
       [
         collectorTask.id,
       ],
+    );
+  },
+);
+
+test(
+  "coordinator plans a project into ordered executable tasks",
+  async (t) => {
+    const tempDir =
+      await mkdtemp(
+        join(
+          tmpdir(),
+          "mineagents-coordinator-planner-",
+        ),
+      );
+
+    const server =
+      createCoordinatorServer({
+        dbPath:
+          join(
+            tempDir,
+            "coordinator.sqlite",
+          ),
+      });
+
+    const port =
+      await listen(
+        server,
+      );
+
+    const baseUrl =
+      `http://127.0.0.1:${port}`;
+
+    t.after(
+      async () => {
+        await close(
+          server,
+        );
+
+        await rm(
+          tempDir,
+          {
+            recursive:
+              true,
+
+            force:
+              true,
+          },
+        );
+      },
+    );
+
+    const planResponse =
+      await postJson(
+        baseUrl,
+        "/projects/plan",
+        {
+          name:
+            "Oak starter shelter",
+
+          description:
+            "Collect oak and build the first autonomous shelter.",
+
+          collection: {
+            blockName:
+              "minecraft:oak_log",
+
+            quantity:
+              1,
+
+            candidates: [
+              {
+                dimension:
+                  "minecraft:overworld",
+
+                x:
+                  10,
+
+                y:
+                  83,
+
+                z:
+                  -7,
+              },
+            ],
+          },
+
+          build: {
+            placements: [
+              {
+                position: {
+                  dimension:
+                    "minecraft:overworld",
+
+                  x:
+                    11,
+
+                  y:
+                    83,
+
+                  z:
+                    -7,
+                },
+
+                blockName:
+                  "minecraft:oak_log",
+              },
+            ],
+          },
+        },
+      );
+
+    assert.equal(
+      planResponse.status,
+      201,
+    );
+
+    const planBody =
+      await planResponse.json();
+
+    assert.ok(
+      planBody.project,
+    );
+
+    assert.equal(
+      planBody.project.name,
+      "Oak starter shelter",
+    );
+
+    assert.equal(
+      planBody.project.description,
+      "Collect oak and build the first autonomous shelter.",
+    );
+
+    assert.ok(
+      Array.isArray(
+        planBody.tasks,
+      ),
+    );
+
+    assert.equal(
+      planBody.tasks.length,
+      2,
+    );
+
+    const collectorTask =
+      planBody.tasks[0];
+
+    const builderTask =
+      planBody.tasks[1];
+
+    assert.equal(
+      collectorTask.projectId,
+      planBody.project.id,
+    );
+
+    assert.equal(
+      collectorTask.kind,
+      "collect-blocks",
+    );
+
+    assert.equal(
+      collectorTask.requiredRole,
+      "collector",
+    );
+
+    assert.equal(
+      collectorTask.status,
+      "pending",
+    );
+
+    assert.deepEqual(
+      collectorTask.dependsOnTaskIds,
+      [],
+    );
+
+    assert.equal(
+      collectorTask.payload.blockName,
+      "minecraft:oak_log",
+    );
+
+    assert.equal(
+      collectorTask.payload.quantity,
+      1,
+    );
+
+    assert.deepEqual(
+      collectorTask.payload.candidates,
+      [
+        {
+          dimension:
+            "minecraft:overworld",
+
+          x:
+            10,
+
+          y:
+            83,
+
+          z:
+            -7,
+        },
+      ],
+    );
+
+    assert.equal(
+      collectorTask.payload.allowPartial,
+      false,
+    );
+
+    assert.equal(
+      builderTask.projectId,
+      planBody.project.id,
+    );
+
+    assert.equal(
+      builderTask.kind,
+      "build-blueprint",
+    );
+
+    assert.equal(
+      builderTask.requiredRole,
+      "builder",
+    );
+
+    assert.equal(
+      builderTask.status,
+      "pending",
+    );
+
+    assert.equal(
+      builderTask.payload.blueprintId,
+      "planned:Oak starter shelter",
+    );
+
+    assert.deepEqual(
+      builderTask.payload.placements,
+      [
+        {
+          position: {
+            dimension:
+              "minecraft:overworld",
+
+            x:
+              11,
+
+            y:
+              83,
+
+            z:
+              -7,
+          },
+
+          blockName:
+            "minecraft:oak_log",
+        },
+      ],
+    );
+
+    assert.equal(
+      builderTask.payload.allowPartial,
+      false,
+    );
+
+    assert.deepEqual(
+      builderTask.dependsOnTaskIds,
+      [
+        collectorTask.id,
+      ],
+    );
+
+    const projectsResponse =
+      await globalThis.fetch(
+        `${baseUrl}/projects`,
+      );
+
+    assert.equal(
+      projectsResponse.status,
+      200,
+    );
+
+    const {
+      projects,
+    } =
+      await projectsResponse.json();
+
+    const persistedProject =
+      projects.find(
+        (project) =>
+          project.id ===
+          planBody.project.id,
+      );
+
+    assert.ok(
+      persistedProject,
+    );
+
+    assert.equal(
+      persistedProject.name,
+      "Oak starter shelter",
+    );
+
+    const tasksResponse =
+      await globalThis.fetch(
+        `${baseUrl}/tasks`,
+      );
+
+    assert.equal(
+      tasksResponse.status,
+      200,
+    );
+
+    const {
+      tasks,
+    } =
+      await tasksResponse.json();
+
+    const persistedCollectorTask =
+      tasks.find(
+        (task) =>
+          task.id ===
+          collectorTask.id,
+      );
+
+    const persistedBuilderTask =
+      tasks.find(
+        (task) =>
+          task.id ===
+          builderTask.id,
+      );
+
+    assert.ok(
+      persistedCollectorTask,
+    );
+
+    assert.ok(
+      persistedBuilderTask,
+    );
+
+    assert.equal(
+      persistedCollectorTask.projectId,
+      planBody.project.id,
+    );
+
+    assert.equal(
+      persistedBuilderTask.projectId,
+      planBody.project.id,
+    );
+
+    assert.deepEqual(
+      persistedCollectorTask.dependsOnTaskIds,
+      [],
+    );
+
+    assert.deepEqual(
+      persistedBuilderTask.dependsOnTaskIds,
+      [
+        persistedCollectorTask.id,
+      ],
+    );
+
+    const invalidPlanResponse =
+      await postJson(
+        baseUrl,
+        "/projects/plan",
+        {
+          name:
+            "Invalid project",
+
+          quantity:
+            0,
+        },
+      );
+
+    assert.equal(
+      invalidPlanResponse.status,
+      400,
+    );
+
+    const invalidPlanBody =
+      await invalidPlanResponse.json();
+
+    assert.equal(
+      invalidPlanBody
+        .error
+        .code,
+      "VALIDATION_ERROR",
+    );
+
+    const projectsAfterInvalidResponse =
+      await globalThis.fetch(
+        `${baseUrl}/projects`,
+      );
+
+    assert.equal(
+      projectsAfterInvalidResponse.status,
+      200,
+    );
+
+    const projectsAfterInvalid =
+      await projectsAfterInvalidResponse.json();
+
+    assert.equal(
+      projectsAfterInvalid
+        .projects
+        .length,
+      1,
     );
   },
 );
