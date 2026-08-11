@@ -1,10 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from "node:http";
+
 import {
   HttpMetrics,
   noopLogger,
   type StructuredLogger,
 } from "@mineagents/observability";
+
 import {
   ContractValidationError,
   parseClaimTaskInput,
@@ -13,8 +20,23 @@ import {
   parseTaskCreateInput,
   parseTaskPatchInput,
 } from "@mineagents/sdk";
-import { AppError, ValidationError } from "./errors.js";
-import { CoordinatorStore } from "./database.js";
+
+import {
+  PlannerValidationError,
+} from "@mineagents/planner";
+
+import {
+  AppError,
+  ValidationError,
+} from "./errors.js";
+
+import {
+  CoordinatorStore,
+} from "./database.js";
+
+import {
+  materializeProjectPlan,
+} from "./project-planning.js";
 
 export interface CoordinatorServerOptions {
   dbPath: string;
@@ -22,38 +44,71 @@ export interface CoordinatorServerOptions {
   metrics?: HttpMetrics;
 }
 
-type JsonValue = Record<string, unknown> | unknown[] | string | number | boolean | null;
+type JsonValue =
+  | Record<string, unknown>
+  | unknown[]
+  | string
+  | number
+  | boolean
+  | null;
 
-const MAX_BODY_BYTES = 1_048_576;
+const MAX_BODY_BYTES =
+  1_048_576;
 
 const sendJson = (
-  response: ServerResponse<IncomingMessage>,
+  response:
+    ServerResponse<IncomingMessage>,
   statusCode: number,
   payload: JsonValue,
-  headers: Record<string, string> = {},
+  headers:
+    Record<string, string> = {},
 ): void => {
-  response.writeHead(statusCode, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
-    ...headers,
-  });
-  response.end(JSON.stringify(payload));
+  response.writeHead(
+    statusCode,
+    {
+      "Content-Type":
+        "application/json; charset=utf-8",
+
+      "Cache-Control":
+        "no-store",
+
+      ...headers,
+    },
+  );
+
+  response.end(
+    JSON.stringify(
+      payload,
+    ),
+  );
 };
 
 const sendText = (
-  response: ServerResponse<IncomingMessage>,
+  response:
+    ServerResponse<IncomingMessage>,
   statusCode: number,
   contentType: string,
   body: string,
 ): void => {
-  response.writeHead(statusCode, {
-    "Content-Type": contentType,
-    "Cache-Control": "no-store",
-  });
-  response.end(body);
+  response.writeHead(
+    statusCode,
+    {
+      "Content-Type":
+        contentType,
+
+      "Cache-Control":
+        "no-store",
+    },
+  );
+
+  response.end(
+    body,
+  );
 };
 
-const normalizeCoordinatorRoute = (path: string): string => {
+const normalizeCoordinatorRoute = (
+  path: string,
+): string => {
   if (
     [
       "/health",
@@ -63,230 +118,724 @@ const normalizeCoordinatorRoute = (path: string): string => {
       "/tasks",
       "/tasks/claim",
       "/projects",
-    ].includes(path)
+      "/projects/plan",
+    ].includes(
+      path,
+    )
   ) {
     return path;
   }
-  return /^\/tasks\/[^/]+$/.test(path) ? "/tasks/:id" : "unmatched";
+
+  return /^\/tasks\/[^/]+$/.test(
+    path,
+  )
+    ? "/tasks/:id"
+    : "unmatched";
 };
 
-const isJsonRequest = (request: IncomingMessage): boolean => {
-  const contentType = request.headers["content-type"];
-  return typeof contentType === "string" && contentType.includes("application/json");
+const isJsonRequest = (
+  request:
+    IncomingMessage,
+): boolean => {
+  const contentType =
+    request.headers[
+      "content-type"
+    ];
+
+  return (
+    typeof contentType ===
+      "string" &&
+    contentType.includes(
+      "application/json",
+    )
+  );
 };
 
-const readJsonBody = async (request: IncomingMessage): Promise<unknown> => {
-  if (!isJsonRequest(request)) {
-    throw new ValidationError("Content-Type must be application/json.");
+const readJsonBody = async (
+  request:
+    IncomingMessage,
+): Promise<unknown> => {
+  if (
+    !isJsonRequest(
+      request,
+    )
+  ) {
+    throw new ValidationError(
+      "Content-Type must be application/json.",
+    );
   }
 
-  const chunks: Buffer[] = [];
-  let size = 0;
+  const chunks:
+    Buffer[] = [];
 
-  for await (const chunk of request) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    size += buffer.length;
-    if (size > MAX_BODY_BYTES) {
-      throw new ValidationError("Request body is too large.");
+  let size =
+    0;
+
+  for await (
+    const chunk
+    of request
+  ) {
+    const buffer =
+      Buffer.isBuffer(
+        chunk,
+      )
+        ? chunk
+        : Buffer.from(
+            chunk,
+          );
+
+    size +=
+      buffer.length;
+
+    if (
+      size >
+      MAX_BODY_BYTES
+    ) {
+      throw new ValidationError(
+        "Request body is too large.",
+      );
     }
 
-    chunks.push(buffer);
+    chunks.push(
+      buffer,
+    );
   }
 
-  if (chunks.length === 0) {
+  if (
+    chunks.length ===
+    0
+  ) {
     return {};
   }
 
   try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    return JSON.parse(
+      Buffer.concat(
+        chunks,
+      ).toString(
+        "utf8",
+      ),
+    );
   } catch {
-    throw new ValidationError("Request body must be valid JSON.");
+    throw new ValidationError(
+      "Request body must be valid JSON.",
+    );
   }
 };
 
-const notFound = (response: ServerResponse<IncomingMessage>): void => {
-  sendJson(response, 404, {
-    error: {
-      code: "NOT_FOUND",
-      message: "Route not found.",
+const notFound = (
+  response:
+    ServerResponse<IncomingMessage>,
+): void => {
+  sendJson(
+    response,
+    404,
+    {
+      error: {
+        code:
+          "NOT_FOUND",
+
+        message:
+          "Route not found.",
+      },
     },
-  });
+  );
 };
 
-export const createCoordinatorRequestHandler = (options: CoordinatorServerOptions) => {
-  const store = new CoordinatorStore(options.dbPath);
-  const logger = options.logger ?? noopLogger;
-  const metrics = options.metrics ?? new HttpMetrics({ service: "coordinator" });
+export const createCoordinatorRequestHandler = (
+  options:
+    CoordinatorServerOptions,
+) => {
+  const store =
+    new CoordinatorStore(
+      options.dbPath,
+    );
 
-  const handler = async (request: IncomingMessage, response: ServerResponse<IncomingMessage>) => {
-    const method = request.method ?? "GET";
-    const url = new URL(request.url ?? "/", "http://localhost");
-    const route = normalizeCoordinatorRoute(url.pathname);
-    const requestId = randomUUID();
-    const startedAt = performance.now();
-    response.setHeader("X-Request-Id", requestId);
-    response.once("finish", () => {
-      const durationMs = performance.now() - startedAt;
-      metrics.observe({ method, route, statusCode: response.statusCode, durationMs });
-      logger.info("http.request", {
-        requestId,
-        method,
-        route,
-        statusCode: response.statusCode,
-        durationMs: Number(durationMs.toFixed(3)),
-      });
+  const logger =
+    options.logger ??
+    noopLogger;
+
+  const metrics =
+    options.metrics ??
+    new HttpMetrics({
+      service:
+        "coordinator",
     });
 
+  const handler = async (
+    request:
+      IncomingMessage,
+
+    response:
+      ServerResponse<IncomingMessage>,
+  ) => {
+    const method =
+      request.method ??
+      "GET";
+
+    const url =
+      new URL(
+        request.url ??
+          "/",
+
+        "http://localhost",
+      );
+
+    const route =
+      normalizeCoordinatorRoute(
+        url.pathname,
+      );
+
+    const requestId =
+      randomUUID();
+
+    const startedAt =
+      performance.now();
+
+    response.setHeader(
+      "X-Request-Id",
+      requestId,
+    );
+
+    response.once(
+      "finish",
+      () => {
+        const durationMs =
+          performance.now() -
+          startedAt;
+
+        metrics.observe({
+          method,
+          route,
+          statusCode:
+            response.statusCode,
+
+          durationMs,
+        });
+
+        logger.info(
+          "http.request",
+          {
+            requestId,
+            method,
+            route,
+
+            statusCode:
+              response.statusCode,
+
+            durationMs:
+              Number(
+                durationMs.toFixed(
+                  3,
+                ),
+              ),
+          },
+        );
+      },
+    );
+
     try {
-      if (method === "GET" && url.pathname === "/metrics") {
+      if (
+        method ===
+          "GET" &&
+        url.pathname ===
+          "/metrics"
+      ) {
         sendText(
           response,
           200,
           "text/plain; version=0.0.4; charset=utf-8",
+
           metrics.render([
             {
-              name: "mineagents_coordinator_agents",
-              help: "Agents registered by the coordinator.",
-              value: store.listAgents().length,
+              name:
+                "mineagents_coordinator_agents",
+
+              help:
+                "Agents registered by the coordinator.",
+
+              value:
+                store.listAgents()
+                  .length,
             },
+
             {
-              name: "mineagents_coordinator_tasks",
-              help: "Tasks stored by the coordinator.",
-              value: store.listTasks().length,
+              name:
+                "mineagents_coordinator_tasks",
+
+              help:
+                "Tasks stored by the coordinator.",
+
+              value:
+                store.listTasks()
+                  .length,
             },
+
             {
-              name: "mineagents_coordinator_projects",
-              help: "Projects stored by the coordinator.",
-              value: store.listProjects().length,
+              name:
+                "mineagents_coordinator_projects",
+
+              help:
+                "Projects stored by the coordinator.",
+
+              value:
+                store.listProjects()
+                  .length,
             },
           ]),
         );
+
         return;
       }
 
-      if (method === "GET" && url.pathname === "/health") {
-        sendJson(response, 200, {
-          status: "ok",
-          service: "coordinator",
-          timestamp: new Date().toISOString(),
-          agents: store.listAgents().length,
-          tasks: store.listTasks().length,
-          projects: store.listProjects().length,
-        });
+      if (
+        method ===
+          "GET" &&
+        url.pathname ===
+          "/health"
+      ) {
+        sendJson(
+          response,
+          200,
+          {
+            status:
+              "ok",
+
+            service:
+              "coordinator",
+
+            timestamp:
+              new Date()
+                .toISOString(),
+
+            agents:
+              store.listAgents()
+                .length,
+
+            tasks:
+              store.listTasks()
+                .length,
+
+            projects:
+              store.listProjects()
+                .length,
+          },
+        );
+
         return;
       }
 
-      if (method === "GET" && url.pathname === "/agents") {
-        sendJson(response, 200, { agents: store.listAgents() });
+      if (
+        method ===
+          "GET" &&
+        url.pathname ===
+          "/agents"
+      ) {
+        sendJson(
+          response,
+          200,
+          {
+            agents:
+              store.listAgents(),
+          },
+        );
+
         return;
       }
 
-      if (method === "POST" && url.pathname === "/agents/heartbeat") {
-        const payload = parseHeartbeatInput(await readJsonBody(request));
-        const agent = store.upsertAgentHeartbeat(payload);
-        sendJson(response, 200, { agent });
+      if (
+        method ===
+          "POST" &&
+        url.pathname ===
+          "/agents/heartbeat"
+      ) {
+        const payload =
+          parseHeartbeatInput(
+            await readJsonBody(
+              request,
+            ),
+          );
+
+        const agent =
+          store.upsertAgentHeartbeat(
+            payload,
+          );
+
+        sendJson(
+          response,
+          200,
+          {
+            agent,
+          },
+        );
+
         return;
       }
 
-      if (method === "GET" && url.pathname === "/tasks") {
-        sendJson(response, 200, { tasks: store.listTasks() });
+      if (
+        method ===
+          "GET" &&
+        url.pathname ===
+          "/tasks"
+      ) {
+        sendJson(
+          response,
+          200,
+          {
+            tasks:
+              store.listTasks(),
+          },
+        );
+
         return;
       }
 
-      if (method === "POST" && url.pathname === "/tasks") {
-        const payload = parseTaskCreateInput(await readJsonBody(request));
-        const task = store.createTask(payload);
-        sendJson(response, 201, { task });
+      if (
+        method ===
+          "POST" &&
+        url.pathname ===
+          "/tasks"
+      ) {
+        const payload =
+          parseTaskCreateInput(
+            await readJsonBody(
+              request,
+            ),
+          );
+
+        const task =
+          store.createTask(
+            payload,
+          );
+
+        sendJson(
+          response,
+          201,
+          {
+            task,
+          },
+        );
+
         return;
       }
 
-      if (method === "POST" && url.pathname === "/tasks/claim") {
-        const payload = parseClaimTaskInput(await readJsonBody(request));
-        const task = store.claimNextTask(payload.agentId);
-        if (!task) {
-          sendJson(response, 404, {
-            error: {
-              code: "NO_PENDING_TASKS",
-              message: "No pending tasks are available to claim.",
+      if (
+        method ===
+          "POST" &&
+        url.pathname ===
+          "/tasks/claim"
+      ) {
+        const payload =
+          parseClaimTaskInput(
+            await readJsonBody(
+              request,
+            ),
+          );
+
+        const task =
+          store.claimNextTask(
+            payload.agentId,
+          );
+
+        if (
+          !task
+        ) {
+          sendJson(
+            response,
+            404,
+            {
+              error: {
+                code:
+                  "NO_PENDING_TASKS",
+
+                message:
+                  "No pending tasks are available to claim.",
+              },
             },
-          });
+          );
+
           return;
         }
 
-        sendJson(response, 200, { task });
+        sendJson(
+          response,
+          200,
+          {
+            task,
+          },
+        );
+
         return;
       }
 
-      const taskMatch = url.pathname.match(/^\/tasks\/([^/]+)$/);
-      if (method === "PATCH" && taskMatch) {
-        const payload = parseTaskPatchInput(await readJsonBody(request));
-        const taskId = taskMatch[1];
-        if (!taskId) {
-          throw new ValidationError("Task id is required.");
+      const taskMatch =
+        url.pathname.match(
+          /^\/tasks\/([^/]+)$/,
+        );
+
+      if (
+        method ===
+          "PATCH" &&
+        taskMatch
+      ) {
+        const payload =
+          parseTaskPatchInput(
+            await readJsonBody(
+              request,
+            ),
+          );
+
+        const taskId =
+          taskMatch[1];
+
+        if (
+          !taskId
+        ) {
+          throw new ValidationError(
+            "Task id is required.",
+          );
         }
 
-        const task = store.patchTask(decodeURIComponent(taskId), payload);
-        sendJson(response, 200, { task });
-        return;
-      }
+        const task =
+          store.patchTask(
+            decodeURIComponent(
+              taskId,
+            ),
 
-      if (method === "GET" && url.pathname === "/projects") {
-        sendJson(response, 200, { projects: store.listProjects() });
-        return;
-      }
+            payload,
+          );
 
-      if (method === "POST" && url.pathname === "/projects") {
-        const payload = parseProjectInput(await readJsonBody(request));
-        const project = store.createProject(payload);
-        sendJson(response, 201, { project });
-        return;
-      }
-
-      notFound(response);
-    } catch (error) {
-      if (error instanceof ContractValidationError) {
-        const validationError = new ValidationError(error.message);
-        sendJson(response, validationError.statusCode, {
-          error: { code: validationError.code, message: validationError.message },
-        });
-        return;
-      }
-
-      if (error instanceof AppError) {
-        sendJson(response, error.statusCode, {
-          error: {
-            code: error.code,
-            message: error.message,
+        sendJson(
+          response,
+          200,
+          {
+            task,
           },
-        });
+        );
+
         return;
       }
 
-      logger.error("http.unhandled_error", {
-        requestId,
-        errorName: error instanceof Error ? error.name : "UnknownError",
-      });
-      sendJson(response, 500, {
-        error: {
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Unexpected coordinator error.",
+      if (
+        method ===
+          "GET" &&
+        url.pathname ===
+          "/projects"
+      ) {
+        sendJson(
+          response,
+          200,
+          {
+            projects:
+              store.listProjects(),
+          },
+        );
+
+        return;
+      }
+
+      if (
+        method ===
+          "POST" &&
+        url.pathname ===
+          "/projects"
+      ) {
+        const payload =
+          parseProjectInput(
+            await readJsonBody(
+              request,
+            ),
+          );
+
+        const project =
+          store.createProject(
+            payload,
+          );
+
+        sendJson(
+          response,
+          201,
+          {
+            project,
+          },
+        );
+
+        return;
+      }
+
+      if (
+        method ===
+          "POST" &&
+        url.pathname ===
+          "/projects/plan"
+      ) {
+        const result =
+          materializeProjectPlan(
+            store,
+            await readJsonBody(
+              request,
+            ),
+          );
+
+        sendJson(
+          response,
+          201,
+          {
+            project:
+              result.project,
+
+            tasks:
+              result.tasks,
+          },
+        );
+
+        return;
+      }
+
+      notFound(
+        response,
+      );
+    } catch (error) {
+      if (
+        error instanceof
+        PlannerValidationError
+      ) {
+        const validationError =
+          new ValidationError(
+            error.message,
+          );
+
+        sendJson(
+          response,
+          validationError.statusCode,
+          {
+            error: {
+              code:
+                validationError.code,
+
+              message:
+                validationError.message,
+            },
+          },
+        );
+
+        return;
+      }
+
+      if (
+        error instanceof
+        ContractValidationError
+      ) {
+        const validationError =
+          new ValidationError(
+            error.message,
+          );
+
+        sendJson(
+          response,
+          validationError.statusCode,
+          {
+            error: {
+              code:
+                validationError.code,
+
+              message:
+                validationError.message,
+            },
+          },
+        );
+
+        return;
+      }
+
+      if (
+        error instanceof
+        AppError
+      ) {
+        sendJson(
+          response,
+          error.statusCode,
+          {
+            error: {
+              code:
+                error.code,
+
+              message:
+                error.message,
+            },
+          },
+        );
+
+        return;
+      }
+
+      logger.error(
+        "http.unhandled_error",
+        {
+          requestId,
+
+          errorName:
+            error instanceof
+            Error
+              ? error.name
+              : "UnknownError",
         },
-      });
+      );
+
+      sendJson(
+        response,
+        500,
+        {
+          error: {
+            code:
+              "INTERNAL_SERVER_ERROR",
+
+            message:
+              "Unexpected coordinator error.",
+          },
+        },
+      );
     }
   };
 
-  return { handler, store, metrics };
+  return {
+    handler,
+    store,
+    metrics,
+  };
 };
 
-export const createCoordinatorServer = (options: CoordinatorServerOptions): Server => {
-  const { handler, store } = createCoordinatorRequestHandler(options);
-  const server = createServer((request, response) => {
-    void handler(request, response);
-  });
+export const createCoordinatorServer = (
+  options:
+    CoordinatorServerOptions,
+): Server => {
+  const {
+    handler,
+    store,
+  } =
+    createCoordinatorRequestHandler(
+      options,
+    );
 
-  server.once("close", () => {
-    store.close();
-  });
+  const server =
+    createServer(
+      (
+        request,
+        response,
+      ) => {
+        void handler(
+          request,
+          response,
+        );
+      },
+    );
+
+  server.once(
+    "close",
+    () => {
+      store.close();
+    },
+  );
 
   return server;
 };
