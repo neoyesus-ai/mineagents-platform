@@ -8,6 +8,7 @@ import {
 
 import {
   SafeMinecraftAdapter,
+  isPositionInRegion,
   type MinecraftAuthorization,
   type MinecraftAuthorizationVerifier,
   type WorldPosition,
@@ -40,13 +41,40 @@ const logger =
       "collector-worker",
   });
 
+interface CollectSearch {
+  dimension?: string;
+  maxDistance: number;
+  maxCandidates: number;
+}
+
 interface CollectPayload {
   blockName: string;
   quantity: number;
-  candidates:
+
+  candidates?:
     readonly WorldPosition[];
+
+  search?:
+    CollectSearch;
+
   allowPartial?: boolean;
 }
+
+interface ResolvedCollectPayload {
+  blockName: string;
+  quantity: number;
+
+  candidates:
+    readonly WorldPosition[];
+
+  allowPartial?: boolean;
+}
+
+const MAX_DISCOVERY_DISTANCE =
+  128;
+
+const MAX_DISCOVERY_CANDIDATES =
+  256;
 
 const sleep = (
   milliseconds: number,
@@ -111,6 +139,121 @@ const parsePosition = (
   };
 };
 
+const parseSearch = (
+  value: unknown,
+  quantity: number,
+  config: CollectorWorkerConfig,
+): CollectSearch => {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    throw new Error(
+      "Collector search must be an object.",
+    );
+  }
+
+  const search =
+    value as Record<
+      string,
+      unknown
+    >;
+
+  const allowedKeys = new Set([
+    "dimension",
+    "maxDistance",
+    "maxCandidates",
+  ]);
+
+  for (
+    const key
+    of Object.keys(search)
+  ) {
+    if (
+      !allowedKeys.has(
+        key,
+      )
+    ) {
+      throw new Error(
+        `Unknown collector search field '${key}'.`,
+      );
+    }
+  }
+
+  const dimension =
+    search.dimension;
+
+  if (
+    dimension !== undefined &&
+    (
+      typeof dimension !==
+        "string" ||
+      dimension !==
+        config.allowedRegion.dimension
+    )
+  ) {
+    throw new Error(
+      "Collector search dimension must match the configured allowed region.",
+    );
+  }
+
+  const maxDistance =
+    search.maxDistance;
+
+  if (
+    !Number.isSafeInteger(
+      maxDistance,
+    ) ||
+    (maxDistance as number) <
+      1 ||
+    (maxDistance as number) >
+      MAX_DISCOVERY_DISTANCE
+  ) {
+    throw new Error(
+      `Collector search maxDistance must be between 1 and ${MAX_DISCOVERY_DISTANCE}.`,
+    );
+  }
+
+  const maxCandidates =
+    search.maxCandidates;
+
+  if (
+    !Number.isSafeInteger(
+      maxCandidates,
+    ) ||
+    (maxCandidates as number) <
+      1 ||
+    (maxCandidates as number) >
+      MAX_DISCOVERY_CANDIDATES
+  ) {
+    throw new Error(
+      `Collector search maxCandidates must be between 1 and ${MAX_DISCOVERY_CANDIDATES}.`,
+    );
+  }
+
+  if (
+    (maxCandidates as number) <
+    quantity
+  ) {
+    throw new Error(
+      "Collector search maxCandidates must be at least the requested quantity.",
+    );
+  }
+
+  return {
+    dimension:
+      config.allowedRegion
+        .dimension,
+
+    maxDistance:
+      maxDistance as number,
+
+    maxCandidates:
+      maxCandidates as number,
+  };
+};
+
 const parsePayload = (
   task: TaskRecord,
   config: CollectorWorkerConfig,
@@ -136,6 +279,9 @@ const parsePayload = (
   const candidates =
     payload.candidates;
 
+  const search =
+    payload.search;
+
   if (
     typeof blockName !==
       "string" ||
@@ -154,7 +300,8 @@ const parsePayload = (
     !Number.isSafeInteger(
       quantity,
     ) ||
-    (quantity as number) < 1 ||
+    (quantity as number) <
+      1 ||
     (quantity as number) >
       config.maxActionsPerTask
   ) {
@@ -163,15 +310,71 @@ const parsePayload = (
     );
   }
 
-  if (
-    !Array.isArray(
+  const hasCandidates =
+    Array.isArray(
       candidates,
-    ) ||
-    candidates.length === 0
+    );
+
+  const hasSearch =
+    search !== undefined;
+
+  if (
+    hasCandidates ===
+    hasSearch
   ) {
     throw new Error(
-      "Collector task requires candidate positions.",
+      "Collector task must provide exactly one of 'candidates' or 'search'.",
     );
+  }
+
+  if (
+    hasCandidates
+  ) {
+    if (
+      candidates.length ===
+        0 ||
+      candidates.length >
+        MAX_DISCOVERY_CANDIDATES
+    ) {
+      throw new Error(
+        `Collector candidates must contain between 1 and ${MAX_DISCOVERY_CANDIDATES} positions.`,
+      );
+    }
+
+    const parsedCandidates =
+      candidates.map(
+        parsePosition,
+      );
+
+    for (
+      const candidate
+      of parsedCandidates
+    ) {
+      if (
+        !isPositionInRegion(
+          candidate,
+          config.allowedRegion,
+        )
+      ) {
+        throw new Error(
+          "Collector candidate is outside the configured allowed region.",
+        );
+      }
+    }
+
+    return {
+      blockName,
+
+      quantity:
+        quantity as number,
+
+      candidates:
+        parsedCandidates,
+
+      allowPartial:
+        payload.allowPartial ===
+        true,
+    };
   }
 
   return {
@@ -180,9 +383,11 @@ const parsePayload = (
     quantity:
       quantity as number,
 
-    candidates:
-      candidates.map(
-        parsePosition,
+    search:
+      parseSearch(
+        search,
+        quantity as number,
+        config,
       ),
 
     allowPartial:
@@ -191,9 +396,81 @@ const parsePayload = (
   };
 };
 
+const resolveCandidates = async (
+  driver: MineflayerDriver,
+  payload: CollectPayload,
+  region: WorldRegion,
+): Promise<readonly WorldPosition[]> => {
+  if (
+    payload.candidates
+  ) {
+    return payload.candidates;
+  }
+
+  if (
+    !payload.search
+  ) {
+    throw new Error(
+      "Collector payload has no candidate source.",
+    );
+  }
+
+  const discovered =
+    await driver.findBlocks({
+      blockName:
+        payload.blockName,
+
+      maxDistance:
+        payload.search
+          .maxDistance,
+
+      maxResults:
+        payload.search
+          .maxCandidates,
+    });
+
+  const candidates =
+    discovered.filter(
+      (position) =>
+        isPositionInRegion(
+          position,
+          region,
+        ),
+    );
+
+  logger.info(
+    "task.discovery_completed",
+    {
+      blockName:
+        payload.blockName,
+
+      discoveredBlocks:
+        discovered.length,
+
+      allowedCandidates:
+        candidates.length,
+
+      maxDistance:
+        payload.search
+          .maxDistance,
+    },
+  );
+
+  if (
+    candidates.length ===
+    0
+  ) {
+    throw new Error(
+      `Collector discovery found no '${payload.blockName}' blocks inside the allowed region.`,
+    );
+  }
+
+  return candidates;
+};
+
 const createAuthorization = (
   task: TaskRecord,
-  payload: CollectPayload,
+  payload: ResolvedCollectPayload,
   region: WorldRegion,
 ): MinecraftAuthorization => ({
   id:
@@ -315,7 +592,9 @@ export class CollectorWorker {
         continue;
       }
 
-      if (!task) {
+      if (
+        !task
+      ) {
         await sleep(
           this.config
             .pollIntervalMs,
@@ -330,7 +609,9 @@ export class CollectorWorker {
     }
   }
 
-  private async sendHeartbeat(): Promise<void> {
+  private async sendHeartbeat():
+    Promise<void>
+  {
     await this.client.heartbeat({
       id:
         this.config.agentId,
@@ -359,7 +640,7 @@ export class CollectorWorker {
     );
 
     try {
-      const payload =
+      const parsedPayload =
         parsePayload(
           task,
           this.config,
@@ -372,6 +653,28 @@ export class CollectorWorker {
             "running",
         },
       );
+
+      const candidates =
+        await resolveCandidates(
+          this.driver,
+          parsedPayload,
+          this.config
+            .allowedRegion,
+        );
+
+      const payload:
+        ResolvedCollectPayload = {
+          blockName:
+            parsedPayload.blockName,
+
+          quantity:
+            parsedPayload.quantity,
+
+          candidates,
+
+          allowPartial:
+            parsedPayload.allowPartial,
+        };
 
       const authorization =
         createAuthorization(
@@ -422,6 +725,9 @@ export class CollectorWorker {
             maxBlocksPerTask:
               this.config
                 .maxActionsPerTask,
+
+            maxCandidatesPerTask:
+              MAX_DISCOVERY_CANDIDATES,
           },
         });
 

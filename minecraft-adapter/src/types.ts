@@ -22,7 +22,15 @@ export interface MinecraftAgentState {
   position: WorldPosition;
 }
 
-export type MinecraftWriteAction = "place-block" | "break-block";
+export interface MinecraftBlockSearch {
+  blockName: string;
+  maxDistance: number;
+  maxResults: number;
+}
+
+export type MinecraftWriteAction =
+  | "place-block"
+  | "break-block";
 
 export interface MinecraftWriteRequest {
   action: MinecraftWriteAction;
@@ -56,25 +64,49 @@ export interface MinecraftSafetyPolicy {
 
 export interface MinecraftDriver {
   getState(): Promise<MinecraftAgentState>;
-  inspectBlock(position: WorldPosition): Promise<MinecraftBlockSnapshot>;
-  moveTo(target: WorldPosition, allowedRegions: readonly WorldRegion[]): Promise<void>;
+
+  inspectBlock(
+    position: WorldPosition,
+  ): Promise<MinecraftBlockSnapshot>;
+
+  findBlocks(
+    search: MinecraftBlockSearch,
+  ): Promise<readonly WorldPosition[]>;
+
+  moveTo(
+    target: WorldPosition,
+    allowedRegions: readonly WorldRegion[],
+  ): Promise<void>;
+
   placeBlock(
     position: WorldPosition,
     blockName: string,
     expectedCurrentBlockNames: readonly string[],
   ): Promise<void>;
-  breakBlock(position: WorldPosition, expectedBlockName: string): Promise<void>;
+
+  breakBlock(
+    position: WorldPosition,
+    expectedBlockName: string,
+  ): Promise<void>;
 }
 
 export interface MinecraftAdapter {
   getState(): Promise<MinecraftAgentState>;
-  inspectBlock(position: WorldPosition): Promise<MinecraftBlockSnapshot>;
-  moveTo(target: WorldPosition): Promise<void>;
+
+  inspectBlock(
+    position: WorldPosition,
+  ): Promise<MinecraftBlockSnapshot>;
+
+  moveTo(
+    target: WorldPosition,
+  ): Promise<void>;
+
   placeBlock(
     position: WorldPosition,
     blockName: string,
     authorization?: MinecraftAuthorization,
   ): Promise<void>;
+
   breakBlock(
     position: WorldPosition,
     expectedBlockName: string,

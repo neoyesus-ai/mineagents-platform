@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { test } from "node:test";
+import { Vec3 } from "vec3";
 import {
   BoundedMovementController,
   MineflayerDriver,
@@ -73,6 +74,172 @@ test("Mineflayer driver exposes normalized state and block snapshots", async () 
   await assert.rejects(
     driver.inspectBlock({ ...position, dimension: "minecraft:the_nether" }),
     hasDriverCode("DIMENSION_MISMATCH"),
+  );
+});
+
+test("Mineflayer driver discovers nearby blocks as normalized world positions", async () => {
+  const bot = createFakeBot();
+
+  bot.registry = {
+    blocksByName: {
+      oak_log: {
+        id: 17,
+      },
+    },
+  };
+
+  let receivedOptions;
+
+  bot.findBlocks = (options) => {
+    receivedOptions = options;
+
+    return [
+      new Vec3(4, 65, -2),
+      new Vec3(-3, 63, 8),
+    ];
+  };
+
+  const driver =
+    new MineflayerDriver(bot);
+
+  const positions =
+    await driver.findBlocks({
+      blockName:
+        "minecraft:oak_log",
+
+      maxDistance:
+        16,
+
+      maxResults:
+        8,
+    });
+
+  assert.equal(
+    receivedOptions.matching,
+    17,
+  );
+
+  assert.equal(
+    receivedOptions.maxDistance,
+    16,
+  );
+
+  assert.equal(
+    receivedOptions.count,
+    8,
+  );
+
+  assert.deepEqual(
+    positions,
+    [
+      {
+        dimension:
+          "minecraft:overworld",
+
+        x:
+          4,
+
+        y:
+          65,
+
+        z:
+          -2,
+      },
+      {
+        dimension:
+          "minecraft:overworld",
+
+        x:
+          -3,
+
+        y:
+          63,
+
+        z:
+          8,
+      },
+    ],
+  );
+});
+
+test("Mineflayer driver rejects invalid block discovery requests", async () => {
+  const bot = createFakeBot();
+
+  bot.registry = {
+    blocksByName: {
+      oak_log: {
+        id: 17,
+      },
+    },
+  };
+
+  bot.findBlocks = () => [];
+
+  const driver =
+    new MineflayerDriver(bot);
+
+  await assert.rejects(
+    driver.findBlocks({
+      blockName:
+        "oak_log",
+
+      maxDistance:
+        16,
+
+      maxResults:
+        8,
+    }),
+    hasDriverCode(
+      "INVALID_WRITE_REQUEST",
+    ),
+  );
+
+  await assert.rejects(
+    driver.findBlocks({
+      blockName:
+        "minecraft:oak_log",
+
+      maxDistance:
+        0,
+
+      maxResults:
+        8,
+    }),
+    hasDriverCode(
+      "INVALID_CONFIG",
+    ),
+  );
+
+  await assert.rejects(
+    driver.findBlocks({
+      blockName:
+        "minecraft:oak_log",
+
+      maxDistance:
+        16,
+
+      maxResults:
+        0,
+    }),
+    hasDriverCode(
+      "INVALID_CONFIG",
+    ),
+  );
+
+  await assert.rejects(
+    driver.findBlocks({
+      blockName:
+        "minecraft:not_a_real_block",
+
+      maxDistance:
+        16,
+
+      maxResults:
+        8,
+    }),
+    hasDriverCode(
+      "INVALID_WRITE_REQUEST",
+    ),
   );
 });
 
