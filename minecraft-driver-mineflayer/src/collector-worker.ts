@@ -9,6 +9,7 @@ import {
 import {
   SafeMinecraftAdapter,
   isPositionInRegion,
+  type MinecraftAdapter,
   type MinecraftAuthorization,
   type MinecraftAuthorizationVerifier,
   type WorldPosition,
@@ -68,6 +69,9 @@ interface ResolvedCollectPayload {
     readonly WorldPosition[];
 
   allowPartial?: boolean;
+
+  autonomousMovement:
+    boolean;
 }
 
 const MAX_DISCOVERY_DISTANCE =
@@ -75,6 +79,13 @@ const MAX_DISCOVERY_DISTANCE =
 
 const MAX_DISCOVERY_CANDIDATES =
   256;
+
+const emptyBlockNames =
+  new Set([
+    "minecraft:air",
+    "minecraft:cave_air",
+    "minecraft:void_air",
+  ]);
 
 const sleep = (
   milliseconds: number,
@@ -86,6 +97,22 @@ const sleep = (
         milliseconds,
       ),
   );
+
+const clonePosition = (
+  position: WorldPosition,
+): WorldPosition => ({
+  dimension:
+    position.dimension,
+
+  x:
+    position.x,
+
+  y:
+    position.y,
+
+  z:
+    position.z,
+});
 
 const parsePosition = (
   value: unknown,
@@ -160,11 +187,12 @@ const parseSearch = (
       unknown
     >;
 
-  const allowedKeys = new Set([
-    "dimension",
-    "maxDistance",
-    "maxCandidates",
-  ]);
+  const allowedKeys =
+    new Set([
+      "dimension",
+      "maxDistance",
+      "maxCandidates",
+    ]);
 
   for (
     const key
@@ -400,11 +428,23 @@ const resolveCandidates = async (
   driver: MineflayerDriver,
   payload: CollectPayload,
   region: WorldRegion,
-): Promise<readonly WorldPosition[]> => {
+): Promise<{
+  candidates:
+    readonly WorldPosition[];
+
+  autonomousMovement:
+    boolean;
+}> => {
   if (
     payload.candidates
   ) {
-    return payload.candidates;
+    return {
+      candidates:
+        payload.candidates,
+
+      autonomousMovement:
+        false,
+    };
   }
 
   if (
@@ -465,7 +505,12 @@ const resolveCandidates = async (
     );
   }
 
-  return candidates;
+  return {
+    candidates,
+
+    autonomousMovement:
+      true,
+  };
 };
 
 const createAuthorization = (
@@ -511,6 +556,385 @@ const createVerifier = (
         taskId &&
       request.action ===
         "break-block"
+    );
+  },
+});
+
+const squaredHorizontalDistance = (
+  left: WorldPosition,
+  right: WorldPosition,
+): number => {
+  const dx =
+    left.x -
+    right.x;
+
+  const dz =
+    left.z -
+    right.z;
+
+  return (
+    dx * dx +
+    dz * dz
+  );
+};
+
+const candidateApproachPositions = (
+  target: WorldPosition,
+): readonly WorldPosition[] => [
+  {
+    dimension:
+      target.dimension,
+
+    x:
+      target.x + 1,
+
+    y:
+      target.y,
+
+    z:
+      target.z,
+  },
+
+  {
+    dimension:
+      target.dimension,
+
+    x:
+      target.x - 1,
+
+    y:
+      target.y,
+
+    z:
+      target.z,
+  },
+
+  {
+    dimension:
+      target.dimension,
+
+    x:
+      target.x,
+
+    y:
+      target.y,
+
+    z:
+      target.z + 1,
+  },
+
+  {
+    dimension:
+      target.dimension,
+
+    x:
+      target.x,
+
+    y:
+      target.y,
+
+    z:
+      target.z - 1,
+  },
+
+  {
+    dimension:
+      target.dimension,
+
+    x:
+      target.x + 1,
+
+    y:
+      target.y,
+
+    z:
+      target.z + 1,
+  },
+
+  {
+    dimension:
+      target.dimension,
+
+    x:
+      target.x + 1,
+
+    y:
+      target.y,
+
+    z:
+      target.z - 1,
+  },
+
+  {
+    dimension:
+      target.dimension,
+
+    x:
+      target.x - 1,
+
+    y:
+      target.y,
+
+    z:
+      target.z + 1,
+  },
+
+  {
+    dimension:
+      target.dimension,
+
+    x:
+      target.x - 1,
+
+    y:
+      target.y,
+
+    z:
+      target.z - 1,
+  },
+];
+
+const isWalkableApproach = async (
+  minecraft: MinecraftAdapter,
+  position: WorldPosition,
+): Promise<boolean> => {
+  const feet =
+    await minecraft.inspectBlock(
+      position,
+    );
+
+  if (
+    !emptyBlockNames.has(
+      feet.name,
+    )
+  ) {
+    return false;
+  }
+
+  const head =
+    await minecraft.inspectBlock({
+      ...position,
+
+      y:
+        position.y + 1,
+    });
+
+  if (
+    !emptyBlockNames.has(
+      head.name,
+    )
+  ) {
+    return false;
+  }
+
+  const support =
+    await minecraft.inspectBlock({
+      ...position,
+
+      y:
+        position.y - 1,
+    });
+
+  return support.solid;
+};
+
+const findApproachPosition = async (
+  minecraft: MinecraftAdapter,
+  target: WorldPosition,
+  region: WorldRegion,
+): Promise<WorldPosition> => {
+  const state =
+    await minecraft.getState();
+
+  const approaches =
+    candidateApproachPositions(
+      target,
+    )
+      .filter(
+        (position) =>
+          isPositionInRegion(
+            position,
+            region,
+          ) &&
+          isPositionInRegion(
+            {
+              ...position,
+
+              y:
+                position.y + 1,
+            },
+            region,
+          ) &&
+          isPositionInRegion(
+            {
+              ...position,
+
+              y:
+                position.y - 1,
+            },
+            region,
+          ),
+      )
+      .sort(
+        (
+          left,
+          right,
+        ) =>
+          squaredHorizontalDistance(
+            state.position,
+            left,
+          ) -
+          squaredHorizontalDistance(
+            state.position,
+            right,
+          ),
+      );
+
+  for (
+    const approach
+    of approaches
+  ) {
+    try {
+      if (
+        await isWalkableApproach(
+          minecraft,
+          approach,
+        )
+      ) {
+        return clonePosition(
+          approach,
+        );
+      }
+    } catch {
+      /*
+       * An unloaded or otherwise unreadable
+       * approach is not a valid movement
+       * target. Try the next candidate.
+       */
+    }
+  }
+
+  throw new Error(
+    `Collector could not find a walkable approach position for ${target.dimension} (${target.x}, ${target.y}, ${target.z}).`,
+  );
+};
+
+const createAutonomousCollectorAdapter = (
+  minecraft: SafeMinecraftAdapter,
+  region: WorldRegion,
+): MinecraftAdapter => ({
+  getState:
+    () =>
+      minecraft.getState(),
+
+  inspectBlock:
+    (
+      position,
+    ) =>
+      minecraft.inspectBlock(
+        position,
+      ),
+
+  moveTo:
+    (
+      target,
+    ) =>
+      minecraft.moveTo(
+        target,
+      ),
+
+  placeBlock:
+    (
+      position,
+      blockName,
+      authorization,
+    ) =>
+      minecraft.placeBlock(
+        position,
+        blockName,
+        authorization,
+      ),
+
+  async breakBlock(
+    position,
+    expectedBlockName,
+    authorization,
+  ) {
+    const approach =
+      await findApproachPosition(
+        minecraft,
+        position,
+        region,
+      );
+
+    const before =
+      await minecraft.getState();
+
+    const alreadyAtApproach =
+      before.position.dimension ===
+        approach.dimension &&
+      before.position.x ===
+        approach.x &&
+      before.position.y ===
+        approach.y &&
+      before.position.z ===
+        approach.z;
+
+    if (
+      !alreadyAtApproach
+    ) {
+      logger.info(
+        "task.movement_started",
+        {
+          target:
+            position,
+
+          approach,
+        },
+      );
+
+      await minecraft.moveTo(
+        approach,
+      );
+
+      const after =
+        await minecraft.getState();
+
+      logger.info(
+        "task.movement_completed",
+        {
+          position:
+            after.position,
+
+          target:
+            position,
+        },
+      );
+    }
+
+    /*
+     * Reverify the resource after moving.
+     * Another agent or the world may have
+     * changed it while movement occurred.
+     */
+    const current =
+      await minecraft.inspectBlock(
+        position,
+      );
+
+    if (
+      current.name !==
+      expectedBlockName
+    ) {
+      throw new Error(
+        `Collector target changed before breaking: expected '${expectedBlockName}', found '${current.name}'.`,
+      );
+    }
+
+    await minecraft.breakBlock(
+      position,
+      expectedBlockName,
+      authorization,
     );
   },
 });
@@ -654,7 +1078,7 @@ export class CollectorWorker {
         },
       );
 
-      const candidates =
+      const resolved =
         await resolveCandidates(
           this.driver,
           parsedPayload,
@@ -670,10 +1094,14 @@ export class CollectorWorker {
           quantity:
             parsedPayload.quantity,
 
-          candidates,
+          candidates:
+            resolved.candidates,
 
           allowPartial:
             parsedPayload.allowPartial,
+
+          autonomousMovement:
+            resolved.autonomousMovement,
         };
 
       const authorization =
@@ -684,7 +1112,7 @@ export class CollectorWorker {
             .allowedRegion,
         );
 
-      const minecraft =
+      const safeMinecraft =
         new SafeMinecraftAdapter({
           driver:
             this.driver,
@@ -695,8 +1123,13 @@ export class CollectorWorker {
                 .allowedRegion,
             ],
 
+            /*
+             * Movement remains bounded by
+             * SafeMinecraftAdapter and
+             * BoundedMovementController.
+             */
             allowMovement:
-              false,
+              payload.autonomousMovement,
 
             allowedPlaceBlocks:
               [],
@@ -716,6 +1149,16 @@ export class CollectorWorker {
               authorization.id,
             ),
         });
+
+      const minecraft:
+        MinecraftAdapter =
+          payload.autonomousMovement
+            ? createAutonomousCollectorAdapter(
+                safeMinecraft,
+                this.config
+                  .allowedRegion,
+              )
+            : safeMinecraft;
 
       const collector =
         new CollectorAgent({
@@ -804,6 +1247,12 @@ export class CollectorWorker {
           ? error.message
           : "Unknown collector error.";
 
+      const cause =
+  error instanceof Error &&
+  "cause" in error
+    ? error.cause
+    : undefined;
+
       logger.error(
         "task.failed",
         {
@@ -814,6 +1263,31 @@ export class CollectorWorker {
             error instanceof Error
               ? error.name
               : "UnknownError",
+
+          errorMessage:
+            error instanceof Error
+              ? error.message
+              : "Unknown collector error.",
+
+          causeName:
+            cause instanceof Error
+              ? cause.name
+              : undefined,
+
+          causeMessage:
+            cause instanceof Error
+              ? cause.message
+              : undefined,
+
+          causeCode:
+            (
+              cause !== null &&
+              typeof cause === "object" &&
+              "code" in cause &&
+              typeof cause.code === "string"
+            )
+              ? cause.code
+              : undefined,
         },
       );
 
