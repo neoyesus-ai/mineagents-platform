@@ -7,8 +7,14 @@ export interface WorldPosition {
 
 export interface WorldRegion {
   dimension: string;
-  min: Omit<WorldPosition, "dimension">;
-  max: Omit<WorldPosition, "dimension">;
+  min: Omit<
+    WorldPosition,
+    "dimension"
+  >;
+  max: Omit<
+    WorldPosition,
+    "dimension"
+  >;
 }
 
 export interface MinecraftBlockSnapshot {
@@ -41,7 +47,8 @@ export interface MinecraftWriteRequest {
 export interface MinecraftAuthorization {
   id: string;
   taskId: string;
-  allowedActions: readonly MinecraftWriteAction[];
+  allowedActions:
+    readonly MinecraftWriteAction[];
   allowedRegion: WorldRegion;
   expiresAt: string;
   maxActions: number;
@@ -49,21 +56,28 @@ export interface MinecraftAuthorization {
 
 export interface MinecraftAuthorizationVerifier {
   verify(
-    authorization: MinecraftAuthorization,
-    request: MinecraftWriteRequest,
+    authorization:
+      MinecraftAuthorization,
+    request:
+      MinecraftWriteRequest,
   ): Promise<boolean>;
 }
 
 export interface MinecraftSafetyPolicy {
-  allowedRegions: readonly WorldRegion[];
+  allowedRegions:
+    readonly WorldRegion[];
   allowMovement: boolean;
-  allowedPlaceBlocks: readonly string[];
-  allowedBreakBlocks: readonly string[];
-  maxActionsPerAuthorization: number;
+  allowedPlaceBlocks:
+    readonly string[];
+  allowedBreakBlocks:
+    readonly string[];
+  maxActionsPerAuthorization:
+    number;
 }
 
 export interface MinecraftDriver {
-  getState(): Promise<MinecraftAgentState>;
+  getState():
+    Promise<MinecraftAgentState>;
 
   inspectBlock(
     position: WorldPosition,
@@ -71,17 +85,30 @@ export interface MinecraftDriver {
 
   findBlocks(
     search: MinecraftBlockSearch,
-  ): Promise<readonly WorldPosition[]>;
+  ): Promise<
+    readonly WorldPosition[]
+  >;
+
+  getInventoryCount(
+    itemName: string,
+  ): number;
+
+  dropInventoryItem(
+    itemName: string,
+    quantity: number,
+  ): Promise<void>;
 
   moveTo(
     target: WorldPosition,
-    allowedRegions: readonly WorldRegion[],
+    allowedRegions:
+      readonly WorldRegion[],
   ): Promise<void>;
 
   placeBlock(
     position: WorldPosition,
     blockName: string,
-    expectedCurrentBlockNames: readonly string[],
+    expectedCurrentBlockNames:
+      readonly string[],
   ): Promise<void>;
 
   breakBlock(
@@ -91,7 +118,8 @@ export interface MinecraftDriver {
 }
 
 export interface MinecraftAdapter {
-  getState(): Promise<MinecraftAgentState>;
+  getState():
+    Promise<MinecraftAgentState>;
 
   inspectBlock(
     position: WorldPosition,
@@ -104,12 +132,14 @@ export interface MinecraftAdapter {
   placeBlock(
     position: WorldPosition,
     blockName: string,
-    authorization?: MinecraftAuthorization,
+    authorization?:
+      MinecraftAuthorization,
   ): Promise<void>;
 
   breakBlock(
     position: WorldPosition,
     expectedBlockName: string,
-    authorization?: MinecraftAuthorization,
+    authorization?:
+      MinecraftAuthorization,
   ): Promise<void>;
 }

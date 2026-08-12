@@ -1,4 +1,6 @@
-import { EventEmitter } from "node:events";
+import {
+  EventEmitter,
+} from "node:events";
 
 import type {
   MinecraftAgentState,
@@ -14,8 +16,12 @@ import {
   type Bot,
 } from "mineflayer";
 
-import pathfinderPackage from "mineflayer-pathfinder";
-import { Vec3 } from "vec3";
+import pathfinderPackage
+  from "mineflayer-pathfinder";
+
+import {
+  Vec3,
+} from "vec3";
 
 import {
   BoundedMovementController,
@@ -36,7 +42,8 @@ const {
 type MutatingOperation =
   | "movement"
   | "block placement"
-  | "block breaking";
+  | "block breaking"
+  | "inventory drop";
 
 export interface MineflayerConnectionOptions {
   host: string;
@@ -49,8 +56,11 @@ export interface MineflayerConnectionOptions {
 }
 
 export interface MineflayerConnectionDependencies {
-  createBot: typeof createBot;
-  pathfinderPlugin?: typeof pathfinder;
+  createBot:
+    typeof createBot;
+
+  pathfinderPlugin?:
+    typeof pathfinder;
 }
 
 const namespacedDimension = (
@@ -69,6 +79,9 @@ const namespacedBlock = (
 
 const blockNamePattern =
   /^[a-z0-9_.-]+:[a-z0-9_./-]+$/;
+
+const MAX_INVENTORY_DROP_QUANTITY =
+  256;
 
 const reasonText = (
   reason: unknown,
@@ -95,171 +108,174 @@ const reasonText = (
   }
 };
 
-const withTimeout = async <T>(
-  operation: Promise<T>,
-  timeoutMs: number,
-  message: string,
-): Promise<T> =>
-  new Promise<T>(
-    (
-      resolve,
-      reject,
-    ) => {
-      const timeout =
-        setTimeout(
-          () => {
-            reject(
-              new MineflayerDriverError(
-                "CONNECTION_FAILED",
-                message,
-              ),
-            );
-          },
-          timeoutMs,
-        );
-
-      operation.then(
-        (value) => {
-          clearTimeout(
-            timeout,
-          );
-
-          resolve(
-            value,
-          );
-        },
-
-        (
-          error:
-            unknown,
-        ) => {
-          clearTimeout(
-            timeout,
-          );
-
-          reject(
-            error,
-          );
-        },
-      );
-    },
-  );
-
-const waitForSpawn = async (
-  bot: Bot,
-  timeoutMs: number,
-): Promise<void> => {
-  const events =
-    bot as unknown as EventEmitter;
-
-  await withTimeout(
-    new Promise<void>(
+const withTimeout =
+  async <T>(
+    operation: Promise<T>,
+    timeoutMs: number,
+    message: string,
+  ): Promise<T> =>
+    new Promise<T>(
       (
         resolve,
         reject,
       ) => {
-        const cleanup =
-          (): void => {
-            events.off(
-              "spawn",
-              onSpawn,
-            );
-
-            events.off(
-              "error",
-              onError,
-            );
-
-            events.off(
-              "kicked",
-              onKicked,
-            );
-
-            events.off(
-              "end",
-              onEnd,
-            );
-          };
-
-        const succeed =
-          (): void => {
-            cleanup();
-
-            resolve();
-          };
-
-        const fail = (
-          reason:
-            unknown,
-        ): void => {
-          cleanup();
-
-          reject(
-            new MineflayerDriverError(
-              "CONNECTION_FAILED",
-
-              `Mineflayer connection failed: ${reasonText(
-                reason,
-              )}`,
-            ),
-          );
-        };
-
-        const onSpawn =
-          (): void =>
-            succeed();
-
-        const onError = (
-          error:
-            unknown,
-        ): void =>
-          fail(
-            error,
+        const timeout =
+          setTimeout(
+            () => {
+              reject(
+                new MineflayerDriverError(
+                  "CONNECTION_FAILED",
+                  message,
+                ),
+              );
+            },
+            timeoutMs,
           );
 
-        const onKicked = (
-          reason:
-            unknown,
-        ): void =>
-          fail(
-            reason,
-          );
+        operation.then(
+          (value) => {
+            clearTimeout(
+              timeout,
+            );
 
-        const onEnd = (
-          reason:
-            unknown,
-        ): void =>
-          fail(
-            reason,
-          );
+            resolve(
+              value,
+            );
+          },
 
-        events.once(
-          "spawn",
-          onSpawn,
-        );
+          (
+            error:
+              unknown,
+          ) => {
+            clearTimeout(
+              timeout,
+            );
 
-        events.once(
-          "error",
-          onError,
-        );
-
-        events.once(
-          "kicked",
-          onKicked,
-        );
-
-        events.once(
-          "end",
-          onEnd,
+            reject(
+              error,
+            );
+          },
         );
       },
-    ),
+    );
 
-    timeoutMs,
+const waitForSpawn =
+  async (
+    bot: Bot,
+    timeoutMs: number,
+  ): Promise<void> => {
+    const events =
+      bot as unknown as
+        EventEmitter;
 
-    "Timed out while waiting for Mineflayer to spawn.",
-  );
-};
+    await withTimeout(
+      new Promise<void>(
+        (
+          resolve,
+          reject,
+        ) => {
+          const cleanup =
+            (): void => {
+              events.off(
+                "spawn",
+                onSpawn,
+              );
+
+              events.off(
+                "error",
+                onError,
+              );
+
+              events.off(
+                "kicked",
+                onKicked,
+              );
+
+              events.off(
+                "end",
+                onEnd,
+              );
+            };
+
+          const succeed =
+            (): void => {
+              cleanup();
+
+              resolve();
+            };
+
+          const fail = (
+            reason:
+              unknown,
+          ): void => {
+            cleanup();
+
+            reject(
+              new MineflayerDriverError(
+                "CONNECTION_FAILED",
+
+                `Mineflayer connection failed: ${reasonText(
+                  reason,
+                )}`,
+              ),
+            );
+          };
+
+          const onSpawn =
+            (): void =>
+              succeed();
+
+          const onError = (
+            error:
+              unknown,
+          ): void =>
+            fail(
+              error,
+            );
+
+          const onKicked = (
+            reason:
+              unknown,
+          ): void =>
+            fail(
+              reason,
+            );
+
+          const onEnd = (
+            reason:
+              unknown,
+          ): void =>
+            fail(
+              reason,
+            );
+
+          events.once(
+            "spawn",
+            onSpawn,
+          );
+
+          events.once(
+            "error",
+            onError,
+          );
+
+          events.once(
+            "kicked",
+            onKicked,
+          );
+
+          events.once(
+            "end",
+            onEnd,
+          );
+        },
+      ),
+
+      timeoutMs,
+
+      "Timed out while waiting for Mineflayer to spawn.",
+    );
+  };
 
 const validateConnectionOptions = (
   options:
@@ -408,32 +424,159 @@ export class MineflayerDriver
   hasInventoryItem(
     blockName: string,
   ): boolean {
+    return (
+      this.getInventoryCount(
+        blockName,
+      ) >
+      0
+    );
+  }
+
+  getInventoryCount(
+    itemName: string,
+  ): number {
     this.assertConnected();
 
-    if (
-      !blockNamePattern.test(
-        blockName,
-      )
-    ) {
-      throw new MineflayerDriverError(
-        "INVALID_WRITE_REQUEST",
-
-        "Inventory checks require a namespaced Minecraft block identifier.",
-      );
-    }
+    this.assertInventoryItemName(
+      itemName,
+      "Inventory counts",
+    );
 
     return this.bot
       .inventory
       .items()
-      .some(
+      .filter(
         (
           item,
         ) =>
           namespacedBlock(
             item.name,
           ) ===
-          blockName,
+          itemName,
+      )
+      .reduce(
+        (
+          total,
+          item,
+        ) =>
+          total +
+          item.count,
+
+        0,
       );
+  }
+
+  async dropInventoryItem(
+    itemName: string,
+    quantity: number,
+  ): Promise<void> {
+    this.assertConnected();
+
+    this.assertInventoryItemName(
+      itemName,
+      "Inventory drops",
+    );
+
+    if (
+      !Number.isSafeInteger(
+        quantity,
+      ) ||
+      quantity <
+        1 ||
+      quantity >
+        MAX_INVENTORY_DROP_QUANTITY
+    ) {
+      throw new MineflayerDriverError(
+        "INVALID_WRITE_REQUEST",
+
+        `Inventory drop quantity must be an integer between 1 and ${MAX_INVENTORY_DROP_QUANTITY}.`,
+      );
+    }
+
+    const before =
+      this.getInventoryCount(
+        itemName,
+      );
+
+    if (
+      before <
+      quantity
+    ) {
+      throw new MineflayerDriverError(
+        "ITEM_NOT_AVAILABLE",
+
+        `Mineflayer inventory contains ${before} ${itemName}, but ${quantity} were requested.`,
+      );
+    }
+
+    const inventoryItem =
+      this.bot
+        .inventory
+        .items()
+        .find(
+          (
+            item,
+          ) =>
+            namespacedBlock(
+              item.name,
+            ) ===
+            itemName,
+        );
+
+    if (
+      !inventoryItem
+    ) {
+      throw new MineflayerDriverError(
+        "ITEM_NOT_AVAILABLE",
+
+        `Mineflayer inventory does not contain ${itemName}.`,
+      );
+    }
+
+    await this.runExclusive(
+      "inventory drop",
+
+      async () => {
+        try {
+          await this.bot.toss(
+            inventoryItem.type,
+            inventoryItem.metadata ??
+              null,
+            quantity,
+          );
+        } catch (
+          error
+        ) {
+          throw new MineflayerDriverError(
+            "WRITE_FAILED",
+
+            `Mineflayer inventory drop failed: ${reasonText(
+              error,
+            )}`,
+          );
+        }
+
+        const after =
+          this.getInventoryCount(
+            itemName,
+          );
+
+        const expectedAfter =
+          before -
+          quantity;
+
+        if (
+          after !==
+          expectedAfter
+        ) {
+          throw new MineflayerDriverError(
+            "WRITE_VERIFICATION_FAILED",
+
+            `Expected inventory count for ${itemName} to decrease from ${before} to ${expectedAfter}, found ${after}.`,
+          );
+        }
+      },
+    );
   }
 
   async inspectBlock(
@@ -720,6 +863,25 @@ export class MineflayerDriver
     }
   }
 
+  private assertInventoryItemName(
+    itemName: string,
+    operation: string,
+  ): void {
+    if (
+      typeof itemName !==
+        "string" ||
+      !blockNamePattern.test(
+        itemName,
+      )
+    ) {
+      throw new MineflayerDriverError(
+        "INVALID_WRITE_REQUEST",
+
+        `${operation} require a namespaced Minecraft item identifier.`,
+      );
+    }
+  }
+
   private readPosition():
     WorldPosition
   {
@@ -847,7 +1009,8 @@ export const connectMineflayerDriver =
 
     try {
       bot.loadPlugin(
-        dependencies.pathfinderPlugin ??
+        dependencies
+          .pathfinderPlugin ??
           pathfinder,
       );
 
