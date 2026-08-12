@@ -4,13 +4,17 @@ import type {
   ProjectPlanCollection,
   ProjectPlanInput,
   ProjectPlanPlacement,
+  ProjectPlanSearch,
 } from "./contracts.js";
 
 export class PlannerValidationError extends Error {
   constructor(
     message: string,
   ) {
-    super(message);
+    super(
+      message,
+    );
+
     this.name =
       "PlannerValidationError";
   }
@@ -19,14 +23,23 @@ export class PlannerValidationError extends Error {
 type JsonRecord =
   Record<string, unknown>;
 
+const blockNamePattern =
+  /^[a-z0-9_.-]+:[a-z0-9_./-]+$/;
+
+const dimensionPattern =
+  /^minecraft:[a-z0-9_./-]+$/;
+
 const asRecord = (
   value: unknown,
   label: string,
 ): JsonRecord => {
   if (
     value === null ||
-    typeof value !== "object" ||
-    Array.isArray(value)
+    typeof value !==
+      "object" ||
+    Array.isArray(
+      value,
+    )
   ) {
     throw new PlannerValidationError(
       `${label} must be an object.`,
@@ -38,15 +51,20 @@ const asRecord = (
 
 const assertKnownKeys = (
   input: JsonRecord,
-  allowed: readonly string[],
+  allowed:
+    readonly string[],
   label: string,
 ): void => {
   for (
     const key
-    of Object.keys(input)
+    of Object.keys(
+      input,
+    )
   ) {
     if (
-      !allowed.includes(key)
+      !allowed.includes(
+        key,
+      )
     ) {
       throw new PlannerValidationError(
         `Unknown field '${label}.${key}'.`,
@@ -60,8 +78,10 @@ const requiredString = (
   label: string,
 ): string => {
   if (
-    typeof value !== "string" ||
-    value.trim().length === 0
+    typeof value !==
+      "string" ||
+    value.trim().length ===
+      0
   ) {
     throw new PlannerValidationError(
       `${label} must be a non-empty string.`,
@@ -83,7 +103,8 @@ const optionalText = (
   }
 
   if (
-    typeof value !== "string"
+    typeof value !==
+      "string"
   ) {
     throw new PlannerValidationError(
       `${label} must be a string or null.`,
@@ -99,9 +120,13 @@ const positiveInteger = (
   max: number,
 ): number => {
   if (
-    !Number.isSafeInteger(value) ||
-    (value as number) < 1 ||
-    (value as number) > max
+    !Number.isSafeInteger(
+      value,
+    ) ||
+    (value as number) <
+      1 ||
+    (value as number) >
+      max
   ) {
     throw new PlannerValidationError(
       `${label} must be an integer between 1 and ${max}.`,
@@ -122,10 +147,30 @@ const booleanOrUndefined = (
   }
 
   if (
-    typeof value !== "boolean"
+    typeof value !==
+      "boolean"
   ) {
     throw new PlannerValidationError(
       `${label} must be a boolean.`,
+    );
+  }
+
+  return value;
+};
+
+const parseDimension = (
+  value: unknown,
+  label: string,
+): string => {
+  if (
+    typeof value !==
+      "string" ||
+    !dimensionPattern.test(
+      value,
+    )
+  ) {
+    throw new PlannerValidationError(
+      `${label} must be a namespaced Minecraft dimension.`,
     );
   }
 
@@ -153,24 +198,25 @@ const parsePosition = (
     label,
   );
 
-  if (
-    typeof input.dimension !== "string" ||
-    !/^minecraft:[a-z0-9_./-]+$/.test(
+  const dimension =
+    parseDimension(
       input.dimension,
-    )
-  ) {
-    throw new PlannerValidationError(
-      `${label}.dimension must be a namespaced Minecraft dimension.`,
+      `${label}.dimension`,
     );
-  }
 
   for (
     const coordinate
-    of ["x", "y", "z"] as const
+    of [
+      "x",
+      "y",
+      "z",
+    ] as const
   ) {
     if (
       !Number.isSafeInteger(
-        input[coordinate],
+        input[
+          coordinate
+        ],
       )
     ) {
       throw new PlannerValidationError(
@@ -180,8 +226,7 @@ const parsePosition = (
   }
 
   return {
-    dimension:
-      input.dimension,
+    dimension,
 
     x:
       input.x as number,
@@ -191,6 +236,62 @@ const parsePosition = (
 
     z:
       input.z as number,
+  };
+};
+
+const parseSearch = (
+  value: unknown,
+  quantity: number,
+): ProjectPlanSearch => {
+  const input =
+    asRecord(
+      value,
+      "collection.search",
+    );
+
+  assertKnownKeys(
+    input,
+    [
+      "dimension",
+      "maxDistance",
+      "maxCandidates",
+    ],
+    "collection.search",
+  );
+
+  const dimension =
+    parseDimension(
+      input.dimension,
+      "collection.search.dimension",
+    );
+
+  const maxDistance =
+    positiveInteger(
+      input.maxDistance,
+      "collection.search.maxDistance",
+      128,
+    );
+
+  const maxCandidates =
+    positiveInteger(
+      input.maxCandidates,
+      "collection.search.maxCandidates",
+      256,
+    );
+
+  if (
+    maxCandidates <
+    quantity
+  ) {
+    throw new PlannerValidationError(
+      "collection.search.maxCandidates must be at least collection.quantity.",
+    );
+  }
+
+  return {
+    dimension,
+    maxDistance,
+    maxCandidates,
   };
 };
 
@@ -209,6 +310,7 @@ const parseCollection = (
       "blockName",
       "quantity",
       "candidates",
+      "search",
       "allowPartial",
     ],
     "collection",
@@ -221,7 +323,7 @@ const parseCollection = (
     );
 
   if (
-    !/^[a-z0-9_.-]+:[a-z0-9_./-]+$/.test(
+    !blockNamePattern.test(
       blockName,
     )
   ) {
@@ -230,37 +332,88 @@ const parseCollection = (
     );
   }
 
+  const quantity =
+    positiveInteger(
+      input.quantity,
+      "collection.quantity",
+      256,
+    );
+
+  const hasCandidates =
+    input.candidates !==
+    undefined;
+
+  const hasSearch =
+    input.search !==
+    undefined;
+
   if (
-    !Array.isArray(
-      input.candidates,
-    ) ||
-    input.candidates.length === 0
+    hasCandidates ===
+    hasSearch
   ) {
     throw new PlannerValidationError(
-      "collection.candidates must contain at least one position.",
+      "collection must provide exactly one of 'candidates' or 'search'.",
     );
+  }
+
+  if (
+    hasCandidates
+  ) {
+    if (
+      !Array.isArray(
+        input.candidates,
+      ) ||
+      input.candidates
+        .length ===
+        0
+    ) {
+      throw new PlannerValidationError(
+        "collection.candidates must contain at least one position.",
+      );
+    }
+
+    if (
+      input.candidates
+        .length >
+      256
+    ) {
+      throw new PlannerValidationError(
+        "collection.candidates exceeds the maximum of 256 positions.",
+      );
+    }
+
+    return {
+      blockName,
+      quantity,
+
+      candidates:
+        input.candidates.map(
+          (
+            candidate,
+            index,
+          ) =>
+            parsePosition(
+              candidate,
+              `collection.candidates[${index}]`,
+            ),
+        ),
+
+      allowPartial:
+        booleanOrUndefined(
+          input.allowPartial,
+          "collection.allowPartial",
+        ),
+    };
   }
 
   return {
     blockName,
+    quantity,
 
-    quantity:
-      positiveInteger(
-        input.quantity,
-        "collection.quantity",
-        256,
-      ),
-
-    candidates:
-      input.candidates.map(
-        (
-          candidate,
-          index,
-        ) =>
-          parsePosition(
-            candidate,
-            `collection.candidates[${index}]`,
-          ),
+    search:
+      parseSearch(
+        input.search,
+        quantity,
       ),
 
     allowPartial:
@@ -300,7 +453,7 @@ const parsePlacement = (
     );
 
   if (
-    !/^[a-z0-9_.-]+:[a-z0-9_./-]+$/.test(
+    !blockNamePattern.test(
       blockName,
     )
   ) {
@@ -342,7 +495,9 @@ const parseBuild = (
     !Array.isArray(
       input.placements,
     ) ||
-    input.placements.length === 0
+    input.placements
+      .length ===
+      0
   ) {
     throw new PlannerValidationError(
       "build.placements must contain at least one placement.",
@@ -350,7 +505,9 @@ const parseBuild = (
   }
 
   if (
-    input.placements.length > 1024
+    input.placements
+      .length >
+    1024
   ) {
     throw new PlannerValidationError(
       "build.placements exceeds the maximum of 1024 placements.",
