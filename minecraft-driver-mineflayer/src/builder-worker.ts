@@ -9,6 +9,8 @@ import {
 
 import {
   SafeMinecraftAdapter,
+  isPositionInRegion,
+  type MinecraftAdapter,
   type MinecraftAuthorization,
   type MinecraftAuthorizationVerifier,
   type WorldPosition,
@@ -48,6 +50,13 @@ interface BuildPayload {
   allowPartial?: boolean;
 }
 
+const emptyBlockNames =
+  new Set([
+    "minecraft:air",
+    "minecraft:cave_air",
+    "minecraft:void_air",
+  ]);
+
 const sleep = (
   milliseconds: number,
 ): Promise<void> =>
@@ -61,6 +70,22 @@ const sleep = (
 
 const blockNamePattern =
   /^[a-z0-9_.-]+:[a-z0-9_./-]+$/;
+
+const clonePosition = (
+  position: WorldPosition,
+): WorldPosition => ({
+  dimension:
+    position.dimension,
+
+  x:
+    position.x,
+
+  y:
+    position.y,
+
+  z:
+    position.z,
+});
 
 const parsePosition = (
   value: unknown,
@@ -266,6 +291,381 @@ const createVerifier = (
   },
 });
 
+const squaredHorizontalDistance = (
+  left: WorldPosition,
+  right: WorldPosition,
+): number => {
+  const dx =
+    left.x -
+    right.x;
+
+  const dz =
+    left.z -
+    right.z;
+
+  return (
+    dx * dx +
+    dz * dz
+  );
+};
+
+const candidateApproachPositions = (
+  target: WorldPosition,
+): readonly WorldPosition[] => [
+  {
+    dimension:
+      target.dimension,
+
+    x:
+      target.x + 1,
+
+    y:
+      target.y,
+
+    z:
+      target.z,
+  },
+
+  {
+    dimension:
+      target.dimension,
+
+    x:
+      target.x - 1,
+
+    y:
+      target.y,
+
+    z:
+      target.z,
+  },
+
+  {
+    dimension:
+      target.dimension,
+
+    x:
+      target.x,
+
+    y:
+      target.y,
+
+    z:
+      target.z + 1,
+  },
+
+  {
+    dimension:
+      target.dimension,
+
+    x:
+      target.x,
+
+    y:
+      target.y,
+
+    z:
+      target.z - 1,
+  },
+
+  {
+    dimension:
+      target.dimension,
+
+    x:
+      target.x + 1,
+
+    y:
+      target.y,
+
+    z:
+      target.z + 1,
+  },
+
+  {
+    dimension:
+      target.dimension,
+
+    x:
+      target.x + 1,
+
+    y:
+      target.y,
+
+    z:
+      target.z - 1,
+  },
+
+  {
+    dimension:
+      target.dimension,
+
+    x:
+      target.x - 1,
+
+    y:
+      target.y,
+
+    z:
+      target.z + 1,
+  },
+
+  {
+    dimension:
+      target.dimension,
+
+    x:
+      target.x - 1,
+
+    y:
+      target.y,
+
+    z:
+      target.z - 1,
+  },
+];
+
+const isWalkableApproach = async (
+  minecraft:
+    SafeMinecraftAdapter,
+
+  position:
+    WorldPosition,
+): Promise<boolean> => {
+  const feet =
+    await minecraft.inspectBlock(
+      position,
+    );
+
+  if (
+    !emptyBlockNames.has(
+      feet.name,
+    )
+  ) {
+    return false;
+  }
+
+  const head =
+    await minecraft.inspectBlock({
+      ...position,
+
+      y:
+        position.y + 1,
+    });
+
+  if (
+    !emptyBlockNames.has(
+      head.name,
+    )
+  ) {
+    return false;
+  }
+
+  const support =
+    await minecraft.inspectBlock({
+      ...position,
+
+      y:
+        position.y - 1,
+    });
+
+  return support.solid;
+};
+
+const findApproachPosition = async (
+  minecraft:
+    SafeMinecraftAdapter,
+
+  target:
+    WorldPosition,
+
+  region:
+    WorldRegion,
+): Promise<WorldPosition> => {
+  const state =
+    await minecraft.getState();
+
+  const approaches =
+    candidateApproachPositions(
+      target,
+    )
+      .filter(
+        (position) =>
+          isPositionInRegion(
+            position,
+            region,
+          ) &&
+          isPositionInRegion(
+            {
+              ...position,
+
+              y:
+                position.y + 1,
+            },
+            region,
+          ) &&
+          isPositionInRegion(
+            {
+              ...position,
+
+              y:
+                position.y - 1,
+            },
+            region,
+          ),
+      )
+      .sort(
+        (
+          left,
+          right,
+        ) =>
+          squaredHorizontalDistance(
+            state.position,
+            left,
+          ) -
+          squaredHorizontalDistance(
+            state.position,
+            right,
+          ),
+      );
+
+  for (
+    const approach
+    of approaches
+  ) {
+    try {
+      if (
+        await isWalkableApproach(
+          minecraft,
+          approach,
+        )
+      ) {
+        return clonePosition(
+          approach,
+        );
+      }
+    } catch {
+      /*
+       * Una posición descargada o ilegible
+       * no es una aproximación segura.
+       */
+    }
+  }
+
+  throw new Error(
+    `Builder could not find a walkable approach position for ${target.dimension} (${target.x}, ${target.y}, ${target.z}).`,
+  );
+};
+
+const createAutonomousBuilderAdapter = (
+  minecraft:
+    SafeMinecraftAdapter,
+
+  region:
+    WorldRegion,
+): MinecraftAdapter => ({
+  getState:
+    () =>
+      minecraft.getState(),
+
+  inspectBlock:
+    (position) =>
+      minecraft.inspectBlock(
+        position,
+      ),
+
+  moveTo:
+    (target) =>
+      minecraft.moveTo(
+        target,
+      ),
+
+  breakBlock:
+    (
+      position,
+      expectedBlockName,
+      authorization,
+    ) =>
+      minecraft.breakBlock(
+        position,
+        expectedBlockName,
+        authorization,
+      ),
+
+  async placeBlock(
+    position,
+    blockName,
+    authorization,
+  ) {
+    const approach =
+      await findApproachPosition(
+        minecraft,
+        position,
+        region,
+      );
+
+    const state =
+      await minecraft.getState();
+
+    const alreadyAtApproach =
+      state.position.dimension ===
+        approach.dimension &&
+      state.position.x ===
+        approach.x &&
+      state.position.y ===
+        approach.y &&
+      state.position.z ===
+        approach.z;
+
+    if (
+      !alreadyAtApproach
+    ) {
+      logger.info(
+        "task.movement_started",
+        {
+          target:
+            position,
+
+          approach,
+        },
+      );
+
+      await minecraft.moveTo(
+        approach,
+      );
+
+      const after =
+        await minecraft.getState();
+
+      logger.info(
+        "task.movement_completed",
+        {
+          position:
+            after.position,
+
+          target:
+            position,
+        },
+      );
+    }
+
+    /*
+     * BuilderAgent hizo preflight antes de
+     * llegar aquí, pero el mundo puede haber
+     * cambiado durante el desplazamiento.
+     *
+     * SafeMinecraftAdapter + el driver
+     * volverán a validar que el destino sigue
+     * siendo aire antes de consumir la escritura.
+     */
+    await minecraft.placeBlock(
+      position,
+      blockName,
+      authorization,
+    );
+  },
+});
+
 export class BuilderWorker {
   private readonly client:
     CoordinatorWorkerClient;
@@ -343,7 +743,9 @@ export class BuilderWorker {
         continue;
       }
 
-      if (!task) {
+      if (
+        !task
+      ) {
         await sleep(
           this.config
             .pollIntervalMs,
@@ -358,7 +760,9 @@ export class BuilderWorker {
     }
   }
 
-  private async sendHeartbeat(): Promise<void> {
+  private async sendHeartbeat():
+    Promise<void>
+  {
     await this.client.heartbeat({
       id:
         this.config.agentId,
@@ -409,7 +813,7 @@ export class BuilderWorker {
             .allowedRegion,
         );
 
-      const minecraft =
+      const safeMinecraft =
         new SafeMinecraftAdapter({
           driver:
             this.driver,
@@ -420,8 +824,15 @@ export class BuilderWorker {
                 .allowedRegion,
             ],
 
+            /*
+             * El worker puede desplazarse,
+             * pero BoundedMovementController
+             * sigue impidiendo cavar, parkour,
+             * bloques auxiliares o salir de la
+             * región permitida.
+             */
             allowMovement:
-              false,
+              true,
 
             allowedPlaceBlocks:
               this.config
@@ -441,6 +852,13 @@ export class BuilderWorker {
               authorization.id,
             ),
         });
+
+      const minecraft =
+        createAutonomousBuilderAdapter(
+          safeMinecraft,
+          this.config
+            .allowedRegion,
+        );
 
       const builder =
         new BuilderAgent({
@@ -523,6 +941,12 @@ export class BuilderWorker {
           ? error.message
           : "Unknown builder error.";
 
+      const cause =
+        error instanceof Error &&
+        "cause" in error
+          ? error.cause
+          : undefined;
+
       logger.error(
         "task.failed",
         {
@@ -533,6 +957,33 @@ export class BuilderWorker {
             error instanceof Error
               ? error.name
               : "UnknownError",
+
+          errorMessage:
+            error instanceof Error
+              ? error.message
+              : "Unknown builder error.",
+
+          causeName:
+            cause instanceof Error
+              ? cause.name
+              : undefined,
+
+          causeMessage:
+            cause instanceof Error
+              ? cause.message
+              : undefined,
+
+          causeCode:
+            (
+              cause !== null &&
+              typeof cause ===
+                "object" &&
+              "code" in cause &&
+              typeof cause.code ===
+                "string"
+            )
+              ? cause.code
+              : undefined,
         },
       );
 
