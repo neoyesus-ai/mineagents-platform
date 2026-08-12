@@ -202,19 +202,8 @@ test(
       "oak_log",
     );
 
-    /*
-     * El worker debería escoger (7,64,0)
-     * como aproximación:
-     *
-     * - pies libres
-     * - cabeza libre
-     * - soporte sólido debajo
-     */
     world.setBlock(
       {
-        dimension:
-          "minecraft:overworld",
-
         x:
           7,
 
@@ -259,15 +248,6 @@ test(
         world.bot,
       );
 
-    /*
-     * Aquí no probamos otra vez internamente
-     * BoundedMovementController.
-     *
-     * Ese componente ya tiene sus propios
-     * tests. Este test comprueba que
-     * CollectorWorker solicita movimiento
-     * correcto antes de romper.
-     */
     driver.moveTo =
       async (
         movementTarget,
@@ -357,55 +337,20 @@ test(
       16,
     );
 
-    assert.equal(
-      movements.length,
-      1,
-    );
-
     assert.deepEqual(
-      movements[0],
-      {
-        x:
-          7,
+      movements,
+      [
+        {
+          x:
+            7,
 
-        y:
-          64,
+          y:
+            64,
 
-        z:
-          0,
-      },
-    );
-
-    assert.deepEqual(
-      {
-        x:
-          Math.floor(
-            world.bot.entity
-              .position.x,
-          ),
-
-        y:
-          Math.floor(
-            world.bot.entity
-              .position.y,
-          ),
-
-        z:
-          Math.floor(
-            world.bot.entity
-              .position.z,
-          ),
-      },
-      {
-        x:
-          7,
-
-        y:
-          64,
-
-        z:
-          0,
-      },
+          z:
+            0,
+        },
+      ],
     );
 
     assert.equal(
@@ -441,6 +386,497 @@ test(
           },
         },
       ],
+    );
+  },
+);
+
+test(
+  "collector worker skips an unreachable discovered candidate and collects the next one",
+  async () => {
+    const unreachable = {
+      dimension:
+        "minecraft:overworld",
+
+      x:
+        8,
+
+      y:
+        64,
+
+      z:
+        0,
+    };
+
+    const reachable = {
+      dimension:
+        "minecraft:overworld",
+
+      x:
+        0,
+
+      y:
+        64,
+
+      z:
+        8,
+    };
+
+    const world =
+      createWritableMineflayerBot();
+
+    world.bot.entity.position =
+      new Vec3(
+        0,
+        64,
+        0,
+      );
+
+    world.setBlock(
+      unreachable,
+      "oak_log",
+    );
+
+    world.setBlock(
+      reachable,
+      "oak_log",
+    );
+
+    world.setBlock(
+      {
+        x:
+          7,
+
+        y:
+          63,
+
+        z:
+          0,
+      },
+      "stone",
+    );
+
+    world.setBlock(
+      {
+        x:
+          0,
+
+        y:
+          63,
+
+        z:
+          7,
+      },
+      "stone",
+    );
+
+    world.bot.registry = {
+      blocksByName: {
+        oak_log: {
+          id:
+            17,
+        },
+      },
+    };
+
+    world.bot.findBlocks =
+      () => [
+        new Vec3(
+          unreachable.x,
+          unreachable.y,
+          unreachable.z,
+        ),
+
+        new Vec3(
+          reachable.x,
+          reachable.y,
+          reachable.z,
+        ),
+      ];
+
+    const driver =
+      new MineflayerDriver(
+        world.bot,
+      );
+
+    const movementAttempts = [];
+
+    driver.moveTo =
+      async (
+        target,
+        regions,
+      ) => {
+        assert.deepEqual(
+          regions,
+          [
+            allowedRegion,
+          ],
+        );
+
+        movementAttempts.push({
+          x:
+            target.x,
+
+          y:
+            target.y,
+
+          z:
+            target.z,
+        });
+
+        if (
+          target.x ===
+            7 &&
+          target.y ===
+            64 &&
+          target.z ===
+            0
+        ) {
+          const error =
+            new Error(
+              "Synthetic unreachable candidate.",
+            );
+
+          error.name =
+            "MineflayerDriverError";
+
+          error.code =
+            "MOVEMENT_FAILED";
+
+          throw error;
+        }
+
+        world.bot.entity.position =
+          new Vec3(
+            target.x,
+            target.y,
+            target.z,
+          );
+      };
+
+    const worker =
+      new CollectorWorker(
+        driver,
+        createConfig(),
+      );
+
+    const patches =
+      installClientStub(
+        worker,
+      );
+
+    const task =
+      createTask({
+        id:
+          "candidate-fallback-task",
+
+        payload: {
+          blockName:
+            "minecraft:oak_log",
+
+          quantity:
+            1,
+
+          search: {
+            dimension:
+              "minecraft:overworld",
+
+            maxDistance:
+              16,
+
+            maxCandidates:
+              16,
+          },
+        },
+      });
+
+    await worker.executeTask(
+      task,
+    );
+
+    assert.deepEqual(
+      movementAttempts,
+      [
+        {
+          x:
+            7,
+
+          y:
+            64,
+
+          z:
+            0,
+        },
+
+        {
+          x:
+            0,
+
+          y:
+            64,
+
+          z:
+            7,
+        },
+      ],
+    );
+
+    assert.equal(
+      world.blockNameAt(
+        unreachable,
+      ),
+      "oak_log",
+    );
+
+    assert.equal(
+      world.blockNameAt(
+        reachable,
+      ),
+      "air",
+    );
+
+    assert.deepEqual(
+      patches,
+      [
+        {
+          taskId:
+            task.id,
+
+          input: {
+            status:
+              "running",
+          },
+        },
+
+        {
+          taskId:
+            task.id,
+
+          input: {
+            status:
+              "completed",
+
+            failureReason:
+              null,
+          },
+        },
+      ],
+    );
+  },
+);
+
+test(
+  "collector worker fails only after every discovered candidate is unreachable",
+  async () => {
+    const first = {
+      dimension:
+        "minecraft:overworld",
+
+      x:
+        8,
+
+      y:
+        64,
+
+      z:
+        0,
+    };
+
+    const second = {
+      dimension:
+        "minecraft:overworld",
+
+      x:
+        0,
+
+      y:
+        64,
+
+      z:
+        8,
+    };
+
+    const world =
+      createWritableMineflayerBot();
+
+    world.bot.entity.position =
+      new Vec3(
+        0,
+        64,
+        0,
+      );
+
+    world.setBlock(
+      first,
+      "oak_log",
+    );
+
+    world.setBlock(
+      second,
+      "oak_log",
+    );
+
+    world.setBlock(
+      {
+        x:
+          7,
+
+        y:
+          63,
+
+        z:
+          0,
+      },
+      "stone",
+    );
+
+    world.setBlock(
+      {
+        x:
+          0,
+
+        y:
+          63,
+
+        z:
+          7,
+      },
+      "stone",
+    );
+
+    world.bot.registry = {
+      blocksByName: {
+        oak_log: {
+          id:
+            17,
+        },
+      },
+    };
+
+    world.bot.findBlocks =
+      () => [
+        new Vec3(
+          first.x,
+          first.y,
+          first.z,
+        ),
+
+        new Vec3(
+          second.x,
+          second.y,
+          second.z,
+        ),
+      ];
+
+    const driver =
+      new MineflayerDriver(
+        world.bot,
+      );
+
+    let movementAttempts =
+      0;
+
+    driver.moveTo =
+      async () => {
+        movementAttempts +=
+          1;
+
+        const error =
+          new Error(
+            "Synthetic unreachable candidate.",
+          );
+
+        error.name =
+          "MineflayerDriverError";
+
+        error.code =
+          "MOVEMENT_FAILED";
+
+        throw error;
+      };
+
+    const worker =
+      new CollectorWorker(
+        driver,
+        createConfig(),
+      );
+
+    const patches =
+      installClientStub(
+        worker,
+      );
+
+    const task =
+      createTask({
+        id:
+          "all-candidates-unreachable",
+
+        payload: {
+          blockName:
+            "minecraft:oak_log",
+
+          quantity:
+            1,
+
+          search: {
+            dimension:
+              "minecraft:overworld",
+
+            maxDistance:
+              16,
+
+            maxCandidates:
+              16,
+          },
+        },
+      });
+
+    await worker.executeTask(
+      task,
+    );
+
+    assert.equal(
+      movementAttempts,
+      2,
+    );
+
+    assert.equal(
+      world.blockNameAt(
+        first,
+      ),
+      "oak_log",
+    );
+
+    assert.equal(
+      world.blockNameAt(
+        second,
+      ),
+      "oak_log",
+    );
+
+    assert.equal(
+      patches.length,
+      2,
+    );
+
+    assert.equal(
+      patches[0]
+        .input
+        .status,
+      "running",
+    );
+
+    assert.equal(
+      patches[1]
+        .input
+        .status,
+      "failed",
+    );
+
+    assert.match(
+      patches[1]
+        .input
+        .failureReason,
+      /insufficient-resources/,
     );
   },
 );

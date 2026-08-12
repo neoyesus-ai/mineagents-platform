@@ -9,7 +9,6 @@ import {
 import {
   SafeMinecraftAdapter,
   isPositionInRegion,
-  type MinecraftAdapter,
   type MinecraftAuthorization,
   type MinecraftAuthorizationVerifier,
   type WorldPosition,
@@ -72,6 +71,33 @@ interface ResolvedCollectPayload {
 
   autonomousMovement:
     boolean;
+}
+
+interface AutonomousCollectResult {
+  status:
+    | "completed"
+    | "partial"
+    | "insufficient-resources";
+
+  inspectedPositions: number;
+  matchingBlocks: number;
+  brokenBlocks: number;
+
+  brokenPositions:
+    readonly WorldPosition[];
+
+  rejectedCandidates: number;
+}
+
+interface WorkerCollectResult {
+  status:
+    | "completed"
+    | "partial"
+    | "insufficient-resources"
+    | "cancelled"
+    | "failed";
+
+  brokenBlocks: number;
 }
 
 const MAX_DISCOVERY_DISTANCE =
@@ -695,7 +721,7 @@ const candidateApproachPositions = (
 ];
 
 const isWalkableApproach = async (
-  minecraft: MinecraftAdapter,
+  minecraft: SafeMinecraftAdapter,
   position: WorldPosition,
 ): Promise<boolean> => {
   const feet =
@@ -739,7 +765,7 @@ const isWalkableApproach = async (
 };
 
 const findApproachPosition = async (
-  minecraft: MinecraftAdapter,
+  minecraft: SafeMinecraftAdapter,
   target: WorldPosition,
   region: WorldRegion,
 ): Promise<WorldPosition> => {
@@ -807,9 +833,9 @@ const findApproachPosition = async (
       }
     } catch {
       /*
-       * An unloaded or otherwise unreadable
-       * approach is not a valid movement
-       * target. Try the next candidate.
+       * Un approach descargado o ilegible no
+       * es un destino válido. Probamos el
+       * siguiente candidato.
        */
     }
   }
@@ -819,53 +845,177 @@ const findApproachPosition = async (
   );
 };
 
-const createAutonomousCollectorAdapter = (
-  minecraft: SafeMinecraftAdapter,
-  region: WorldRegion,
-): MinecraftAdapter => ({
-  getState:
-    () =>
-      minecraft.getState(),
-
-  inspectBlock:
-    (
-      position,
-    ) =>
-      minecraft.inspectBlock(
-        position,
-      ),
-
-  moveTo:
-    (
-      target,
-    ) =>
-      minecraft.moveTo(
-        target,
-      ),
-
-  placeBlock:
-    (
-      position,
-      blockName,
-      authorization,
-    ) =>
-      minecraft.placeBlock(
-        position,
-        blockName,
-        authorization,
-      ),
-
-  async breakBlock(
-    position,
-    expectedBlockName,
-    authorization,
+const errorDetails = (
+  error: unknown,
+): {
+  name: string;
+  message: string;
+  code?: string;
+} => {
+  if (
+    error instanceof Error
   ) {
-    const approach =
-      await findApproachPosition(
-        minecraft,
-        position,
-        region,
+    const code =
+      "code" in error &&
+      typeof error.code ===
+        "string"
+        ? error.code
+        : undefined;
+
+    return {
+      name:
+        error.name,
+
+      message:
+        error.message,
+
+      code,
+    };
+  }
+
+  return {
+    name:
+      "UnknownError",
+
+    message:
+      "Unknown collector candidate error.",
+  };
+};
+
+const collectAutonomously = async (
+  minecraft: SafeMinecraftAdapter,
+  payload: ResolvedCollectPayload,
+  authorization: MinecraftAuthorization,
+  region: WorldRegion,
+): Promise<AutonomousCollectResult> => {
+  let inspectedPositions =
+    0;
+
+  let rejectedCandidates =
+    0;
+
+  const matches:
+    WorldPosition[] = [];
+
+  const brokenPositions:
+    WorldPosition[] = [];
+
+  /*
+   * Preflight completo.
+   *
+   * Antes de realizar cualquier escritura
+   * inspeccionamos todos los candidatos
+   * descubiertos.
+   */
+  for (
+    const candidate
+    of payload.candidates
+  ) {
+    const block =
+      await minecraft.inspectBlock(
+        candidate,
       );
+
+    inspectedPositions +=
+      1;
+
+    if (
+      block.name ===
+      payload.blockName
+    ) {
+      matches.push(
+        clonePosition(
+          candidate,
+        ),
+      );
+    }
+  }
+
+  if (
+    matches.length <
+      payload.quantity &&
+    !payload.allowPartial
+  ) {
+    return {
+      status:
+        "insufficient-resources",
+
+      inspectedPositions,
+
+      matchingBlocks:
+        matches.length,
+
+      brokenBlocks:
+        0,
+
+      brokenPositions:
+        [],
+
+      rejectedCandidates:
+        0,
+    };
+  }
+
+  const desiredBlocks =
+    payload.allowPartial
+      ? Math.min(
+          payload.quantity,
+          matches.length,
+        )
+      : payload.quantity;
+
+  for (
+    const candidate
+    of matches
+  ) {
+    if (
+      brokenPositions.length >=
+      desiredBlocks
+    ) {
+      break;
+    }
+
+    let approach:
+      WorldPosition;
+
+    try {
+      approach =
+        await findApproachPosition(
+          minecraft,
+          candidate,
+          region,
+        );
+    } catch (error) {
+      rejectedCandidates +=
+        1;
+
+      const details =
+        errorDetails(
+          error,
+        );
+
+      logger.info(
+        "task.candidate_rejected",
+        {
+          target:
+            candidate,
+
+          phase:
+            "approach",
+
+          errorName:
+            details.name,
+
+          errorMessage:
+            details.message,
+
+          errorCode:
+            details.code,
+        },
+      );
+
+      continue;
+    }
 
     const before =
       await minecraft.getState();
@@ -887,15 +1037,49 @@ const createAutonomousCollectorAdapter = (
         "task.movement_started",
         {
           target:
-            position,
+            candidate,
 
           approach,
         },
       );
 
-      await minecraft.moveTo(
-        approach,
-      );
+      try {
+        await minecraft.moveTo(
+          approach,
+        );
+      } catch (error) {
+        rejectedCandidates +=
+          1;
+
+        const details =
+          errorDetails(
+            error,
+          );
+
+        logger.info(
+          "task.candidate_rejected",
+          {
+            target:
+              candidate,
+
+            approach,
+
+            phase:
+              "movement",
+
+            errorName:
+              details.name,
+
+            errorMessage:
+              details.message,
+
+            errorCode:
+              details.code,
+          },
+        );
+
+        continue;
+      }
 
       const after =
         await minecraft.getState();
@@ -907,37 +1091,134 @@ const createAutonomousCollectorAdapter = (
             after.position,
 
           target:
-            position,
+            candidate,
         },
       );
     }
 
     /*
-     * Reverify the resource after moving.
-     * Another agent or the world may have
-     * changed it while movement occurred.
+     * El mundo puede haber cambiado mientras
+     * el bot se desplazaba. Revalidamos antes
+     * de consumir la autorización de escritura.
      */
     const current =
       await minecraft.inspectBlock(
-        position,
+        candidate,
       );
+
+    inspectedPositions +=
+      1;
 
     if (
       current.name !==
-      expectedBlockName
+      payload.blockName
     ) {
-      throw new Error(
-        `Collector target changed before breaking: expected '${expectedBlockName}', found '${current.name}'.`,
+      rejectedCandidates +=
+        1;
+
+      logger.info(
+        "task.candidate_rejected",
+        {
+          target:
+            candidate,
+
+          phase:
+            "revalidation",
+
+          expectedBlockName:
+            payload.blockName,
+
+          actualBlockName:
+            current.name,
+        },
       );
+
+      continue;
     }
 
+    /*
+     * Un error de breakBlock no se convierte
+     * en fallback.
+     *
+     * En ese punto la autorización puede haber
+     * consumido una acción y el estado del
+     * mundo puede ser ambiguo. Fallamos cerrado.
+     */
     await minecraft.breakBlock(
-      position,
-      expectedBlockName,
+      candidate,
+      payload.blockName,
       authorization,
     );
-  },
-});
+
+    brokenPositions.push(
+      clonePosition(
+        candidate,
+      ),
+    );
+  }
+
+  if (
+    brokenPositions.length ===
+    payload.quantity
+  ) {
+    return {
+      status:
+        "completed",
+
+      inspectedPositions,
+
+      matchingBlocks:
+        matches.length,
+
+      brokenBlocks:
+        brokenPositions.length,
+
+      brokenPositions,
+
+      rejectedCandidates,
+    };
+  }
+
+  if (
+    payload.allowPartial &&
+    brokenPositions.length >
+      0
+  ) {
+    return {
+      status:
+        "partial",
+
+      inspectedPositions,
+
+      matchingBlocks:
+        matches.length,
+
+      brokenBlocks:
+        brokenPositions.length,
+
+      brokenPositions,
+
+      rejectedCandidates,
+    };
+  }
+
+  return {
+    status:
+      "insufficient-resources",
+
+    inspectedPositions,
+
+    matchingBlocks:
+      matches.length,
+
+    brokenBlocks:
+      brokenPositions.length,
+
+    brokenPositions,
+
+    rejectedCandidates,
+  };
+};
 
 export class CollectorWorker {
   private readonly client:
@@ -1124,9 +1405,8 @@ export class CollectorWorker {
             ],
 
             /*
-             * Movement remains bounded by
-             * SafeMinecraftAdapter and
-             * BoundedMovementController.
+             * Solo las tareas basadas en search
+             * permiten movimiento autónomo.
              */
             allowMovement:
               payload.autonomousMovement,
@@ -1150,49 +1430,61 @@ export class CollectorWorker {
             ),
         });
 
-      const minecraft:
-        MinecraftAdapter =
-          payload.autonomousMovement
-            ? createAutonomousCollectorAdapter(
-                safeMinecraft,
+      let result:
+        WorkerCollectResult;
+
+      if (
+        payload.autonomousMovement
+      ) {
+        result =
+          await collectAutonomously(
+            safeMinecraft,
+            payload,
+            authorization,
+            this.config
+              .allowedRegion,
+          );
+      } else {
+        /*
+         * Las tareas legacy con candidates
+         * explícitos conservan exactamente el
+         * CollectorAgent existente.
+         */
+        const collector =
+          new CollectorAgent({
+            minecraft:
+              safeMinecraft,
+
+            limits: {
+              maxBlocksPerTask:
                 this.config
-                  .allowedRegion,
-              )
-            : safeMinecraft;
+                  .maxActionsPerTask,
 
-      const collector =
-        new CollectorAgent({
-          minecraft,
+              maxCandidatesPerTask:
+                MAX_DISCOVERY_CANDIDATES,
+            },
+          });
 
-          limits: {
-            maxBlocksPerTask:
-              this.config
-                .maxActionsPerTask,
+        result =
+          await collector.collectBlocks({
+            taskId:
+              task.id,
 
-            maxCandidatesPerTask:
-              MAX_DISCOVERY_CANDIDATES,
-          },
-        });
+            blockName:
+              payload.blockName,
 
-      const result =
-        await collector.collectBlocks({
-          taskId:
-            task.id,
+            quantity:
+              payload.quantity,
 
-          blockName:
-            payload.blockName,
+            candidates:
+              payload.candidates,
 
-          quantity:
-            payload.quantity,
+            authorization,
 
-          candidates:
-            payload.candidates,
-
-          authorization,
-
-          allowPartial:
-            payload.allowPartial,
-        });
+            allowPartial:
+              payload.allowPartial,
+          });
+      }
 
       if (
         result.status ===
@@ -1248,10 +1540,10 @@ export class CollectorWorker {
           : "Unknown collector error.";
 
       const cause =
-  error instanceof Error &&
-  "cause" in error
-    ? error.cause
-    : undefined;
+        error instanceof Error &&
+        "cause" in error
+          ? error.cause
+          : undefined;
 
       logger.error(
         "task.failed",
@@ -1282,9 +1574,11 @@ export class CollectorWorker {
           causeCode:
             (
               cause !== null &&
-              typeof cause === "object" &&
+              typeof cause ===
+                "object" &&
               "code" in cause &&
-              typeof cause.code === "string"
+              typeof cause.code ===
+                "string"
             )
               ? cause.code
               : undefined,
