@@ -14,29 +14,48 @@ export interface ProjectPlanPlacement {
   blockName: string;
 }
 
+export interface ProjectPlanSearch {
+  dimension: string;
+  maxDistance: number;
+  maxCandidates: number;
+}
+
 export interface ProjectPlanCollection {
   blockName: string;
   quantity: number;
-  candidates: readonly ProjectPlanCandidate[];
+
+  candidates?:
+    readonly ProjectPlanCandidate[];
+
+  search?:
+    ProjectPlanSearch;
+
   allowPartial?: boolean;
 }
 
 export interface ProjectPlanBuild {
-  placements: readonly ProjectPlanPlacement[];
+  placements:
+    readonly ProjectPlanPlacement[];
+
   allowPartial?: boolean;
 }
 
 export interface ProjectPlanInput {
   name: string;
   description?: string | null;
-  collection: ProjectPlanCollection;
-  build: ProjectPlanBuild;
+
+  collection:
+    ProjectPlanCollection;
+
+  build:
+    ProjectPlanBuild;
 }
 
 export interface PlannedTask {
   key: string;
   task: TaskCreateInput;
-  dependsOnKeys: readonly string[];
+  dependsOnKeys:
+    readonly string[];
 }
 
 export interface ProjectPlan {
@@ -45,5 +64,6 @@ export interface ProjectPlan {
     description?: string | null;
   };
 
-  tasks: readonly PlannedTask[];
+  tasks:
+    readonly PlannedTask[];
 }

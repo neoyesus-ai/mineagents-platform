@@ -1492,3 +1492,390 @@ test(
     );
   },
 );
+
+test(
+  "coordinator plans autonomous resource search without explicit candidates",
+  async (t) => {
+    const tempDir =
+      await mkdtemp(
+        join(
+          tmpdir(),
+          "mineagents-coordinator-planner-search-",
+        ),
+      );
+
+    const server =
+      createCoordinatorServer({
+        dbPath:
+          join(
+            tempDir,
+            "coordinator.sqlite",
+          ),
+      });
+
+    const port =
+      await listen(
+        server,
+      );
+
+    const baseUrl =
+      `http://127.0.0.1:${port}`;
+
+    t.after(
+      async () => {
+        await close(
+          server,
+        );
+
+        await rm(
+          tempDir,
+          {
+            recursive:
+              true,
+
+            force:
+              true,
+          },
+        );
+      },
+    );
+
+    const planResponse =
+      await postJson(
+        baseUrl,
+        "/projects/plan",
+        {
+          name:
+            "Autonomous oak shelter",
+
+          description:
+            "Discover oak automatically before building.",
+
+          collection: {
+            blockName:
+              "minecraft:oak_log",
+
+            quantity:
+              4,
+
+            search: {
+              dimension:
+                "minecraft:overworld",
+
+              maxDistance:
+                32,
+
+              maxCandidates:
+                64,
+            },
+          },
+
+          build: {
+            placements: [
+              {
+                position: {
+                  dimension:
+                    "minecraft:overworld",
+
+                  x:
+                    20,
+
+                  y:
+                    88,
+
+                  z:
+                    -2,
+                },
+
+                blockName:
+                  "minecraft:oak_log",
+              },
+            ],
+          },
+        },
+      );
+
+    assert.equal(
+      planResponse.status,
+      201,
+    );
+
+    const planBody =
+      await planResponse.json();
+
+    assert.equal(
+      planBody.project.name,
+      "Autonomous oak shelter",
+    );
+
+    assert.equal(
+      planBody.tasks.length,
+      2,
+    );
+
+    const collectorTask =
+      planBody.tasks[0];
+
+    const builderTask =
+      planBody.tasks[1];
+
+    assert.equal(
+      collectorTask.kind,
+      "collect-blocks",
+    );
+
+    assert.equal(
+      collectorTask.requiredRole,
+      "collector",
+    );
+
+    assert.equal(
+      collectorTask.status,
+      "pending",
+    );
+
+    assert.equal(
+      collectorTask.payload.blockName,
+      "minecraft:oak_log",
+    );
+
+    assert.equal(
+      collectorTask.payload.quantity,
+      4,
+    );
+
+    assert.deepEqual(
+      collectorTask.payload.search,
+      {
+        dimension:
+          "minecraft:overworld",
+
+        maxDistance:
+          32,
+
+        maxCandidates:
+          64,
+      },
+    );
+
+    /*
+     * El planner debe elegir exactamente
+     * un mecanismo de descubrimiento.
+     */
+    assert.equal(
+      Object.hasOwn(
+        collectorTask.payload,
+        "candidates",
+      ),
+      false,
+    );
+
+    assert.equal(
+      collectorTask.payload.allowPartial,
+      false,
+    );
+
+    assert.deepEqual(
+      collectorTask.dependsOnTaskIds,
+      [],
+    );
+
+    assert.equal(
+      builderTask.kind,
+      "build-blueprint",
+    );
+
+    assert.equal(
+      builderTask.requiredRole,
+      "builder",
+    );
+
+    assert.deepEqual(
+      builderTask.dependsOnTaskIds,
+      [
+        collectorTask.id,
+      ],
+    );
+
+    assert.equal(
+      builderTask.status,
+      "pending",
+    );
+  },
+);
+
+test(
+  "coordinator rejects ambiguous or undersized project resource search",
+  async (t) => {
+    const tempDir =
+      await mkdtemp(
+        join(
+          tmpdir(),
+          "mineagents-coordinator-planner-invalid-search-",
+        ),
+      );
+
+    const server =
+      createCoordinatorServer({
+        dbPath:
+          join(
+            tempDir,
+            "coordinator.sqlite",
+          ),
+      });
+
+    const port =
+      await listen(
+        server,
+      );
+
+    const baseUrl =
+      `http://127.0.0.1:${port}`;
+
+    t.after(
+      async () => {
+        await close(
+          server,
+        );
+
+        await rm(
+          tempDir,
+          {
+            recursive:
+              true,
+
+            force:
+              true,
+          },
+        );
+      },
+    );
+
+    const build = {
+      placements: [
+        {
+          position: {
+            dimension:
+              "minecraft:overworld",
+
+            x:
+              1,
+
+            y:
+              64,
+
+            z:
+              1,
+          },
+
+          blockName:
+            "minecraft:oak_log",
+        },
+      ],
+    };
+
+    const ambiguousResponse =
+      await postJson(
+        baseUrl,
+        "/projects/plan",
+        {
+          name:
+            "Ambiguous resource plan",
+
+          collection: {
+            blockName:
+              "minecraft:oak_log",
+
+            quantity:
+              1,
+
+            candidates: [
+              {
+                dimension:
+                  "minecraft:overworld",
+
+                x:
+                  2,
+
+                y:
+                  64,
+
+                z:
+                  2,
+              },
+            ],
+
+            search: {
+              dimension:
+                "minecraft:overworld",
+
+              maxDistance:
+                16,
+
+              maxCandidates:
+                16,
+            },
+          },
+
+          build,
+        },
+      );
+
+    assert.equal(
+      ambiguousResponse.status,
+      400,
+    );
+
+    const ambiguousBody =
+      await ambiguousResponse.json();
+
+    assert.equal(
+      ambiguousBody.error.code,
+      "VALIDATION_ERROR",
+    );
+
+    const undersizedResponse =
+      await postJson(
+        baseUrl,
+        "/projects/plan",
+        {
+          name:
+            "Undersized search",
+
+          collection: {
+            blockName:
+              "minecraft:oak_log",
+
+            quantity:
+              8,
+
+            search: {
+              dimension:
+                "minecraft:overworld",
+
+              maxDistance:
+                32,
+
+              maxCandidates:
+                4,
+            },
+          },
+
+          build,
+        },
+      );
+
+    assert.equal(
+      undersizedResponse.status,
+      400,
+    );
+
+    const undersizedBody =
+      await undersizedResponse.json();
+
+    assert.equal(
+      undersizedBody.error.code,
+      "VALIDATION_ERROR",
+    );
+  },
+);

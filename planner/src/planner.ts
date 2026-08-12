@@ -22,6 +22,33 @@ export const createProjectPlan = (
   const buildKey =
     "build-structure";
 
+  const collectionPayload:
+    Record<string, unknown> = {
+      blockName:
+        input.collection.blockName,
+
+      quantity:
+        input.collection.quantity,
+
+      allowPartial:
+        input.collection.allowPartial ??
+        false,
+    };
+
+  if (
+    input.collection.candidates
+  ) {
+    collectionPayload.candidates =
+      input.collection.candidates;
+  }
+
+  if (
+    input.collection.search
+  ) {
+    collectionPayload.search =
+      input.collection.search;
+  }
+
   return {
     project: {
       name:
@@ -52,20 +79,8 @@ export const createProjectPlan = (
           requiredRole:
             "collector",
 
-          payload: {
-            blockName:
-              input.collection.blockName,
-
-            quantity:
-              input.collection.quantity,
-
-            candidates:
-              input.collection.candidates,
-
-            allowPartial:
-              input.collection.allowPartial ??
-              false,
-          },
+          payload:
+            collectionPayload,
 
           dependsOnTaskIds:
             [],
