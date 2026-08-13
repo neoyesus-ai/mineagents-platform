@@ -30,6 +30,10 @@ import type {
 } from "./builder-worker-config.js";
 
 import {
+  acquireBuilderResources,
+} from "./builder-resource-handoff.js";
+
+import {
   CoordinatorWorkerClient,
 } from "./coordinator-client.js";
 
@@ -852,6 +856,41 @@ export class BuilderWorker {
               authorization.id,
             ),
         });
+
+      if (
+        this.config
+          .handoffPosition
+      ) {
+        await acquireBuilderResources({
+          driver:
+            this.driver,
+
+          minecraft:
+            safeMinecraft,
+
+          taskId:
+            task.id,
+
+          placements:
+            payload.placements,
+
+          allowPartial:
+            payload.allowPartial ===
+            true,
+
+          handoffPosition:
+            this.config
+              .handoffPosition,
+
+          allowedRegion:
+            this.config
+              .allowedRegion,
+
+          pickupTimeoutMs:
+            this.config
+              .handoffPickupTimeoutMs,
+        });
+      }
 
       const minecraft =
         createAutonomousBuilderAdapter(

@@ -172,6 +172,9 @@ services:
       BUILDER_ALLOWED_BLOCKS: "minecraft:oak_log"
       BUILDER_MAX_PLACEMENTS_PER_TASK: "256"
 
+      BUILDER_HANDOFF_POSITION: "4,83,-7"
+      BUILDER_HANDOFF_PICKUP_TIMEOUT_MS: "8000"
+
     depends_on:
       minecraft:
         condition: service_healthy

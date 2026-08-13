@@ -1,5 +1,7 @@
-import type {
-  WorldRegion,
+import {
+  isPositionInRegion,
+  type WorldPosition,
+  type WorldRegion,
 } from "@mineagents/minecraft-adapter";
 
 import {
@@ -26,6 +28,12 @@ export interface BuilderWorkerConfig {
   allowedPlaceBlocks: readonly string[];
 
   maxPlacementsPerTask: number;
+
+  handoffPosition?:
+    WorldPosition;
+
+  handoffPickupTimeoutMs:
+    number;
 }
 
 const namespacedPattern =
@@ -86,9 +94,15 @@ const coordinateTriple = (
   const parts =
     (value ?? "")
       .split(",")
-      .map((item) => item.trim());
+      .map(
+        (item) =>
+          item.trim(),
+      );
 
-  if (parts.length !== 3) {
+  if (
+    parts.length !==
+    3
+  ) {
     throw new MineflayerDriverError(
       "INVALID_CONFIG",
       `${name} must use x,y,z.`,
@@ -96,7 +110,9 @@ const coordinateTriple = (
   }
 
   const values =
-    parts.map(Number);
+    parts.map(
+      Number,
+    );
 
   if (
     !values.every(
@@ -131,6 +147,56 @@ const coordinateTriple = (
     y,
     z,
   };
+};
+
+const optionalHandoffPosition = (
+  environment:
+    NodeJS.ProcessEnv,
+
+  dimension:
+    string,
+
+  allowedRegion:
+    WorldRegion,
+): WorldPosition | undefined => {
+  const raw =
+    environment
+      .BUILDER_HANDOFF_POSITION;
+
+  if (
+    raw === undefined ||
+    raw.trim()
+      .length ===
+      0
+  ) {
+    return undefined;
+  }
+
+  const coordinates =
+    coordinateTriple(
+      raw,
+      "BUILDER_HANDOFF_POSITION",
+    );
+
+  const position:
+    WorldPosition = {
+      dimension,
+      ...coordinates,
+    };
+
+  if (
+    !isPositionInRegion(
+      position,
+      allowedRegion,
+    )
+  ) {
+    throw new MineflayerDriverError(
+      "INVALID_CONFIG",
+      "BUILDER_HANDOFF_POSITION must be inside the builder allowed region.",
+    );
+  }
+
+  return position;
 };
 
 export const parseBuilderWorkerConfig = (
@@ -201,6 +267,13 @@ export const parseBuilderWorkerConfig = (
     );
   }
 
+  const allowedRegion:
+    WorldRegion = {
+      dimension,
+      min,
+      max,
+    };
+
   const allowedPlaceBlocks =
     text(
       environment
@@ -232,6 +305,13 @@ export const parseBuilderWorkerConfig = (
     );
   }
 
+  const handoffPosition =
+    optionalHandoffPosition(
+      environment,
+      dimension,
+      allowedRegion,
+    );
+
   return {
     connection,
 
@@ -256,11 +336,7 @@ export const parseBuilderWorkerConfig = (
         60_000,
       ),
 
-    allowedRegion: {
-      dimension,
-      min,
-      max,
-    },
+    allowedRegion,
 
     allowedPlaceBlocks,
 
@@ -276,6 +352,22 @@ export const parseBuilderWorkerConfig = (
         1,
 
         1_024,
+      ),
+
+    handoffPosition,
+
+    handoffPickupTimeoutMs:
+      integer(
+        environment
+          .BUILDER_HANDOFF_PICKUP_TIMEOUT_MS,
+
+        8_000,
+
+        "BUILDER_HANDOFF_PICKUP_TIMEOUT_MS",
+
+        500,
+
+        60_000,
       ),
   };
 };
