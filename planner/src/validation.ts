@@ -441,11 +441,6 @@ const parseCollections = (
     input.collections !==
     undefined;
 
-  /*
-   * XOR:
-   *
-   * hay que proporcionar exactamente uno.
-   */
   if (
     hasLegacyCollection ===
     hasCollections
@@ -472,7 +467,7 @@ const parseCollections = (
     ) ||
     input.collections
       .length ===
-        0
+      0
   ) {
     throw new PlannerValidationError(
       "collections must contain at least one collection.",
@@ -501,15 +496,6 @@ const parseCollections = (
         ),
     );
 
-  /*
-   * Una colección por blockName.
-   *
-   * Evita planes ambiguos como:
-   *
-   * collections:
-   *   oak_log x 1
-   *   oak_log x 2
-   */
   const seenBlocks =
     new Set<string>();
 
@@ -639,6 +625,84 @@ const parseBuild = (
   };
 };
 
+const validateMaterialRequirements = (
+  collections:
+    readonly ProjectPlanCollection[],
+
+  build:
+    ProjectPlanBuild,
+): void => {
+  const availableByBlock =
+    new Map<
+      string,
+      number
+    >();
+
+  for (
+    const collection
+    of collections
+  ) {
+    availableByBlock.set(
+      collection.blockName,
+      collection.quantity,
+    );
+  }
+
+  const requiredByBlock =
+    new Map<
+      string,
+      number
+    >();
+
+  for (
+    const placement
+    of build.placements
+  ) {
+    requiredByBlock.set(
+      placement.blockName,
+      (
+        requiredByBlock.get(
+          placement.blockName,
+        ) ??
+        0
+      ) +
+        1,
+    );
+  }
+
+  for (
+    const [
+      blockName,
+      requiredQuantity,
+    ]
+    of requiredByBlock
+  ) {
+    const availableQuantity =
+      availableByBlock.get(
+        blockName,
+      ) ??
+      0;
+
+    if (
+      availableQuantity ===
+      0
+    ) {
+      throw new PlannerValidationError(
+        `Project build requires ${requiredQuantity} ${blockName}, but no collection provides that material.`,
+      );
+    }
+
+    if (
+      availableQuantity <
+      requiredQuantity
+    ) {
+      throw new PlannerValidationError(
+        `Project build requires ${requiredQuantity} ${blockName}, but collections provide only ${availableQuantity}.`,
+      );
+    }
+  }
+};
+
 export const parseProjectPlanInput = (
   value: unknown,
 ): ProjectPlanInput => {
@@ -660,6 +724,21 @@ export const parseProjectPlanInput = (
     "project",
   );
 
+  const collections =
+    parseCollections(
+      input,
+    );
+
+  const build =
+    parseBuild(
+      input.build,
+    );
+
+  validateMaterialRequirements(
+    collections,
+    build,
+  );
+
   return {
     name:
       requiredString(
@@ -673,14 +752,8 @@ export const parseProjectPlanInput = (
         "description",
       ),
 
-    collections:
-      parseCollections(
-        input,
-      ),
+    collections,
 
-    build:
-      parseBuild(
-        input.build,
-      ),
+    build,
   };
 };
