@@ -40,12 +40,28 @@ export interface ProjectPlanBuild {
   allowPartial?: boolean;
 }
 
+/*
+ * El parser acepta dos formatos:
+ *
+ * Legacy:
+ *
+ *   collection: {...}
+ *
+ * Multi-material:
+ *
+ *   collections: [{...}, {...}]
+ *
+ * Ambos se normalizan internamente a
+ * collections[].
+ */
 export interface ProjectPlanInput {
   name: string;
-  description?: string | null;
 
-  collection:
-    ProjectPlanCollection;
+  description?:
+    string | null;
+
+  collections:
+    readonly ProjectPlanCollection[];
 
   build:
     ProjectPlanBuild;
@@ -53,7 +69,10 @@ export interface ProjectPlanInput {
 
 export interface PlannedTask {
   key: string;
-  task: TaskCreateInput;
+
+  task:
+    TaskCreateInput;
+
   dependsOnKeys:
     readonly string[];
 }
@@ -61,7 +80,9 @@ export interface PlannedTask {
 export interface ProjectPlan {
   project: {
     name: string;
-    description?: string | null;
+
+    description?:
+      string | null;
   };
 
   tasks:
