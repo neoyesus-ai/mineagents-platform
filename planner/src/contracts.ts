@@ -33,6 +33,22 @@ export interface ProjectPlanCollection {
   allowPartial?: boolean;
 }
 
+/*
+ * Estrategia para proyectos cuyos materiales
+ * se derivan automáticamente de
+ * build.placements.
+ *
+ * Como no conocemos posiciones explícitas
+ * de recursos por material, la derivación
+ * automática utiliza búsqueda autónoma.
+ */
+export interface ProjectPlanCollectionStrategy {
+  search:
+    ProjectPlanSearch;
+
+  allowPartial?: boolean;
+}
+
 export interface ProjectPlanBuild {
   placements:
     readonly ProjectPlanPlacement[];
@@ -41,18 +57,24 @@ export interface ProjectPlanBuild {
 }
 
 /*
- * El parser acepta dos formatos:
+ * El parser acepta tres formatos externos:
  *
  * Legacy:
  *
  *   collection: {...}
  *
- * Multi-material:
+ * Multi-material explícito:
  *
  *   collections: [{...}, {...}]
  *
- * Ambos se normalizan internamente a
- * collections[].
+ * Derivación automática:
+ *
+ *   collectionStrategy: {
+ *     search: {...}
+ *   }
+ *
+ * Los tres formatos se normalizan
+ * internamente a collections[].
  */
 export interface ProjectPlanInput {
   name: string;

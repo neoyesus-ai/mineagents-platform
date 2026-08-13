@@ -2,6 +2,7 @@ import type {
   ProjectPlanBuild,
   ProjectPlanCandidate,
   ProjectPlanCollection,
+  ProjectPlanCollectionStrategy,
   ProjectPlanInput,
   ProjectPlanPlacement,
   ProjectPlanSearch,
@@ -430,97 +431,6 @@ const parseCollection = (
   };
 };
 
-const parseCollections = (
-  input: JsonRecord,
-): readonly ProjectPlanCollection[] => {
-  const hasLegacyCollection =
-    input.collection !==
-    undefined;
-
-  const hasCollections =
-    input.collections !==
-    undefined;
-
-  if (
-    hasLegacyCollection ===
-    hasCollections
-  ) {
-    throw new PlannerValidationError(
-      "Project must provide exactly one of 'collection' or 'collections'.",
-    );
-  }
-
-  if (
-    hasLegacyCollection
-  ) {
-    return [
-      parseCollection(
-        input.collection,
-        "collection",
-      ),
-    ];
-  }
-
-  if (
-    !Array.isArray(
-      input.collections,
-    ) ||
-    input.collections
-      .length ===
-      0
-  ) {
-    throw new PlannerValidationError(
-      "collections must contain at least one collection.",
-    );
-  }
-
-  if (
-    input.collections
-      .length >
-    maxCollections
-  ) {
-    throw new PlannerValidationError(
-      `collections exceeds the maximum of ${maxCollections} collections.`,
-    );
-  }
-
-  const collections =
-    input.collections.map(
-      (
-        collection,
-        index,
-      ) =>
-        parseCollection(
-          collection,
-          `collections[${index}]`,
-        ),
-    );
-
-  const seenBlocks =
-    new Set<string>();
-
-  for (
-    const collection
-    of collections
-  ) {
-    if (
-      seenBlocks.has(
-        collection.blockName,
-      )
-    ) {
-      throw new PlannerValidationError(
-        `collections must not contain duplicate blockName '${collection.blockName}'.`,
-      );
-    }
-
-    seenBlocks.add(
-      collection.blockName,
-    );
-  }
-
-  return collections;
-};
-
 const parsePlacement = (
   value: unknown,
   index: number,
@@ -625,6 +535,233 @@ const parseBuild = (
   };
 };
 
+const deriveMaterialRequirements = (
+  build:
+    ProjectPlanBuild,
+): ReadonlyMap<
+  string,
+  number
+> => {
+  const requirements =
+    new Map<
+      string,
+      number
+    >();
+
+  for (
+    const placement
+    of build.placements
+  ) {
+    requirements.set(
+      placement.blockName,
+      (
+        requirements.get(
+          placement.blockName,
+        ) ??
+        0
+      ) +
+        1,
+    );
+  }
+
+  return requirements;
+};
+
+const parseCollectionStrategy = (
+  value: unknown,
+  build: ProjectPlanBuild,
+): readonly ProjectPlanCollection[] => {
+  const input =
+    asRecord(
+      value,
+      "collectionStrategy",
+    );
+
+  assertKnownKeys(
+    input,
+    [
+      "search",
+      "allowPartial",
+    ],
+    "collectionStrategy",
+  );
+
+  const requirements =
+    deriveMaterialRequirements(
+      build,
+    );
+
+  if (
+    requirements.size >
+    maxCollections
+  ) {
+    throw new PlannerValidationError(
+      `Derived project materials exceed the maximum of ${maxCollections} collections.`,
+    );
+  }
+
+  const maxRequiredQuantity =
+    Math.max(
+      ...requirements.values(),
+    );
+
+  const search =
+    parseSearch(
+      input.search,
+      maxRequiredQuantity,
+      "collectionStrategy.search",
+    );
+
+  const allowPartial =
+    booleanOrUndefined(
+      input.allowPartial,
+      "collectionStrategy.allowPartial",
+    );
+
+  return Array.from(
+    requirements.entries(),
+  ).map(
+    (
+      [
+        blockName,
+        quantity,
+      ],
+    ) => ({
+      blockName,
+      quantity,
+
+      search: {
+        ...search,
+      },
+
+      allowPartial,
+    }),
+  );
+};
+
+const parseExplicitCollections = (
+  input: JsonRecord,
+): readonly ProjectPlanCollection[] => {
+  if (
+    input.collection !==
+    undefined
+  ) {
+    return [
+      parseCollection(
+        input.collection,
+        "collection",
+      ),
+    ];
+  }
+
+  if (
+    !Array.isArray(
+      input.collections,
+    ) ||
+    input.collections
+      .length ===
+      0
+  ) {
+    throw new PlannerValidationError(
+      "collections must contain at least one collection.",
+    );
+  }
+
+  if (
+    input.collections
+      .length >
+    maxCollections
+  ) {
+    throw new PlannerValidationError(
+      `collections exceeds the maximum of ${maxCollections} collections.`,
+    );
+  }
+
+  const collections =
+    input.collections.map(
+      (
+        collection,
+        index,
+      ) =>
+        parseCollection(
+          collection,
+          `collections[${index}]`,
+        ),
+    );
+
+  const seenBlocks =
+    new Set<string>();
+
+  for (
+    const collection
+    of collections
+  ) {
+    if (
+      seenBlocks.has(
+        collection.blockName,
+      )
+    ) {
+      throw new PlannerValidationError(
+        `collections must not contain duplicate blockName '${collection.blockName}'.`,
+      );
+    }
+
+    seenBlocks.add(
+      collection.blockName,
+    );
+  }
+
+  return collections;
+};
+
+const parseCollections = (
+  input: JsonRecord,
+  build: ProjectPlanBuild,
+): readonly ProjectPlanCollection[] => {
+  const hasLegacyCollection =
+    input.collection !==
+    undefined;
+
+  const hasCollections =
+    input.collections !==
+    undefined;
+
+  const hasCollectionStrategy =
+    input.collectionStrategy !==
+    undefined;
+
+  const providedModes =
+    [
+      hasLegacyCollection,
+      hasCollections,
+      hasCollectionStrategy,
+    ].filter(
+      Boolean,
+    ).length;
+
+  if (
+    providedModes !==
+    1
+  ) {
+    throw new PlannerValidationError(
+      "Project must provide exactly one of 'collection', 'collections' or 'collectionStrategy'.",
+    );
+  }
+
+  if (
+    hasCollectionStrategy
+  ) {
+    return parseCollectionStrategy(
+      input.collectionStrategy,
+      build,
+    );
+  }
+
+  return parseExplicitCollections(
+    input,
+  );
+};
+
 const validateMaterialRequirements = (
   collections:
     readonly ProjectPlanCollection[],
@@ -649,26 +786,9 @@ const validateMaterialRequirements = (
   }
 
   const requiredByBlock =
-    new Map<
-      string,
-      number
-    >();
-
-  for (
-    const placement
-    of build.placements
-  ) {
-    requiredByBlock.set(
-      placement.blockName,
-      (
-        requiredByBlock.get(
-          placement.blockName,
-        ) ??
-        0
-      ) +
-        1,
+    deriveMaterialRequirements(
+      build,
     );
-  }
 
   for (
     const [
@@ -719,19 +839,26 @@ export const parseProjectPlanInput = (
       "description",
       "collection",
       "collections",
+      "collectionStrategy",
       "build",
     ],
     "project",
   );
 
-  const collections =
-    parseCollections(
-      input,
-    );
-
+  /*
+   * Build se parsea primero porque la
+   * estrategia automática necesita conocer
+   * sus requisitos materiales.
+   */
   const build =
     parseBuild(
       input.build,
+    );
+
+  const collections =
+    parseCollections(
+      input,
+      build,
     );
 
   validateMaterialRequirements(

@@ -49,7 +49,7 @@ const collectionKey = (
 ): string => {
   /*
    * Conservamos la key histórica para
-   * proyectos legacy de un solo material.
+   * proyectos de un único material.
    */
   if (
     collectionCount ===
@@ -141,10 +141,9 @@ export const createProjectPlan = (
         "build-structure",
 
       /*
-       * Fan-in:
-       *
-       * build depende de TODAS las
-       * collections.
+       * El build depende de todas las
+       * colecciones, tanto explícitas
+       * como derivadas.
        */
       dependsOnKeys:
         collectionTasks.map(
