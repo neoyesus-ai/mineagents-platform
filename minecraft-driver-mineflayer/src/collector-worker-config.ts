@@ -1,5 +1,7 @@
-import type {
-  WorldRegion,
+import {
+  isPositionInRegion,
+  type WorldPosition,
+  type WorldRegion,
 } from "@mineagents/minecraft-adapter";
 
 import {
@@ -15,17 +17,29 @@ export const collectorWorkerApprovalPhrase =
   "I_APPROVE_COLLECTOR_WRITES_TO_THE_DISPOSABLE_WORLD";
 
 export interface CollectorWorkerConfig {
-  connection: MineflayerObserverConfig;
+  connection:
+    MineflayerObserverConfig;
 
-  agentId: string;
+  agentId:
+    string;
 
-  pollIntervalMs: number;
+  pollIntervalMs:
+    number;
 
-  allowedRegion: WorldRegion;
+  allowedRegion:
+    WorldRegion;
 
-  allowedBreakBlocks: readonly string[];
+  allowedBreakBlocks:
+    readonly string[];
 
-  maxActionsPerTask: number;
+  maxActionsPerTask:
+    number;
+
+  handoffPosition?:
+    WorldPosition;
+
+  handoffPickupTimeoutMs:
+    number;
 }
 
 const namespacedPattern =
@@ -41,10 +55,14 @@ const integer = (
   const parsed =
     value === undefined
       ? fallback
-      : Number(value);
+      : Number(
+          value,
+        );
 
   if (
-    !Number.isSafeInteger(parsed) ||
+    !Number.isSafeInteger(
+      parsed,
+    ) ||
     parsed < min ||
     parsed > max
   ) {
@@ -63,9 +81,14 @@ const text = (
   name: string,
 ): string => {
   const result =
-    (value ?? fallback).trim();
+    (
+      value ??
+      fallback
+    ).trim();
 
-  if (!result) {
+  if (
+    !result
+  ) {
     throw new MineflayerDriverError(
       "INVALID_CONFIG",
       `${name} must not be empty.`,
@@ -84,15 +107,23 @@ const coordinateTriple = (
   z: number;
 } => {
   const parts =
-    (value ?? "")
-      .split(",")
+    (
+      value ??
+      ""
+    )
+      .split(
+        ",",
+      )
       .map(
-        (item) =>
+        (
+          item,
+        ) =>
           item.trim(),
       );
 
   if (
-    parts.length !== 3
+    parts.length !==
+    3
   ) {
     throw new MineflayerDriverError(
       "INVALID_CONFIG",
@@ -101,7 +132,9 @@ const coordinateTriple = (
   }
 
   const values =
-    parts.map(Number);
+    parts.map(
+      Number,
+    );
 
   if (
     !values.every(
@@ -136,6 +169,56 @@ const coordinateTriple = (
     y,
     z,
   };
+};
+
+const optionalHandoffPosition = (
+  environment:
+    NodeJS.ProcessEnv,
+
+  dimension:
+    string,
+
+  allowedRegion:
+    WorldRegion,
+): WorldPosition | undefined => {
+  const raw =
+    environment
+      .COLLECTOR_HANDOFF_POSITION;
+
+  if (
+    raw === undefined ||
+    raw.trim()
+      .length ===
+      0
+  ) {
+    return undefined;
+  }
+
+  const coordinates =
+    coordinateTriple(
+      raw,
+      "COLLECTOR_HANDOFF_POSITION",
+    );
+
+  const position:
+    WorldPosition = {
+      dimension,
+      ...coordinates,
+    };
+
+  if (
+    !isPositionInRegion(
+      position,
+      allowedRegion,
+    )
+  ) {
+    throw new MineflayerDriverError(
+      "INVALID_CONFIG",
+      "COLLECTOR_HANDOFF_POSITION must be inside the collector allowed region.",
+    );
+  }
+
+  return position;
 };
 
 export const parseCollectorWorkerConfig = (
@@ -197,15 +280,25 @@ export const parseCollectorWorkerConfig = (
     );
 
   if (
-    min.x > max.x ||
-    min.y > max.y ||
-    min.z > max.z
+    min.x >
+      max.x ||
+    min.y >
+      max.y ||
+    min.z >
+      max.z
   ) {
     throw new MineflayerDriverError(
       "INVALID_CONFIG",
       "Collector allowed region minimum must not exceed maximum.",
     );
   }
+
+  const allowedRegion:
+    WorldRegion = {
+      dimension,
+      min,
+      max,
+    };
 
   const allowedBreakBlocks =
     text(
@@ -216,17 +309,26 @@ export const parseCollectorWorkerConfig = (
 
       "COLLECTOR_ALLOWED_BLOCKS",
     )
-      .split(",")
+      .split(
+        ",",
+      )
       .map(
-        (block) =>
+        (
+          block,
+        ) =>
           block.trim(),
       )
-      .filter(Boolean);
+      .filter(
+        Boolean,
+      );
 
   if (
-    allowedBreakBlocks.length === 0 ||
+    allowedBreakBlocks.length ===
+      0 ||
     !allowedBreakBlocks.every(
-      (block) =>
+      (
+        block,
+      ) =>
         namespacedPattern.test(
           block,
         ),
@@ -238,13 +340,23 @@ export const parseCollectorWorkerConfig = (
     );
   }
 
+  const handoffPosition =
+    optionalHandoffPosition(
+      environment,
+      dimension,
+      allowedRegion,
+    );
+
   return {
     connection,
 
     agentId:
       text(
-        environment.AGENT_ID,
+        environment
+          .AGENT_ID,
+
         "collector-1",
+
         "AGENT_ID",
       ),
 
@@ -262,11 +374,7 @@ export const parseCollectorWorkerConfig = (
         60_000,
       ),
 
-    allowedRegion: {
-      dimension,
-      min,
-      max,
-    },
+    allowedRegion,
 
     allowedBreakBlocks,
 
@@ -282,6 +390,22 @@ export const parseCollectorWorkerConfig = (
         1,
 
         256,
+      ),
+
+    handoffPosition,
+
+    handoffPickupTimeoutMs:
+      integer(
+        environment
+          .COLLECTOR_HANDOFF_PICKUP_TIMEOUT_MS,
+
+        8_000,
+
+        "COLLECTOR_HANDOFF_PICKUP_TIMEOUT_MS",
+
+        500,
+
+        60_000,
       ),
   };
 };
