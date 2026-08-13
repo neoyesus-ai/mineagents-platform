@@ -29,6 +29,9 @@ const blockNamePattern =
 const dimensionPattern =
   /^minecraft:[a-z0-9_./-]+$/;
 
+const maxCollections =
+  64;
+
 const asRecord = (
   value: unknown,
   label: string,
@@ -242,11 +245,12 @@ const parsePosition = (
 const parseSearch = (
   value: unknown,
   quantity: number,
+  label: string,
 ): ProjectPlanSearch => {
   const input =
     asRecord(
       value,
-      "collection.search",
+      label,
     );
 
   assertKnownKeys(
@@ -256,26 +260,26 @@ const parseSearch = (
       "maxDistance",
       "maxCandidates",
     ],
-    "collection.search",
+    label,
   );
 
   const dimension =
     parseDimension(
       input.dimension,
-      "collection.search.dimension",
+      `${label}.dimension`,
     );
 
   const maxDistance =
     positiveInteger(
       input.maxDistance,
-      "collection.search.maxDistance",
+      `${label}.maxDistance`,
       128,
     );
 
   const maxCandidates =
     positiveInteger(
       input.maxCandidates,
-      "collection.search.maxCandidates",
+      `${label}.maxCandidates`,
       256,
     );
 
@@ -284,7 +288,7 @@ const parseSearch = (
     quantity
   ) {
     throw new PlannerValidationError(
-      "collection.search.maxCandidates must be at least collection.quantity.",
+      `${label}.maxCandidates must be at least the collection quantity.`,
     );
   }
 
@@ -297,11 +301,12 @@ const parseSearch = (
 
 const parseCollection = (
   value: unknown,
+  label: string,
 ): ProjectPlanCollection => {
   const input =
     asRecord(
       value,
-      "collection",
+      label,
     );
 
   assertKnownKeys(
@@ -313,13 +318,13 @@ const parseCollection = (
       "search",
       "allowPartial",
     ],
-    "collection",
+    label,
   );
 
   const blockName =
     requiredString(
       input.blockName,
-      "collection.blockName",
+      `${label}.blockName`,
     );
 
   if (
@@ -328,14 +333,14 @@ const parseCollection = (
     )
   ) {
     throw new PlannerValidationError(
-      "collection.blockName must be a namespaced Minecraft identifier.",
+      `${label}.blockName must be a namespaced Minecraft identifier.`,
     );
   }
 
   const quantity =
     positiveInteger(
       input.quantity,
-      "collection.quantity",
+      `${label}.quantity`,
       256,
     );
 
@@ -352,7 +357,7 @@ const parseCollection = (
     hasSearch
   ) {
     throw new PlannerValidationError(
-      "collection must provide exactly one of 'candidates' or 'search'.",
+      `${label} must provide exactly one of 'candidates' or 'search'.`,
     );
   }
 
@@ -368,7 +373,7 @@ const parseCollection = (
         0
     ) {
       throw new PlannerValidationError(
-        "collection.candidates must contain at least one position.",
+        `${label}.candidates must contain at least one position.`,
       );
     }
 
@@ -378,7 +383,7 @@ const parseCollection = (
       256
     ) {
       throw new PlannerValidationError(
-        "collection.candidates exceeds the maximum of 256 positions.",
+        `${label}.candidates exceeds the maximum of 256 positions.`,
       );
     }
 
@@ -394,14 +399,14 @@ const parseCollection = (
           ) =>
             parsePosition(
               candidate,
-              `collection.candidates[${index}]`,
+              `${label}.candidates[${index}]`,
             ),
         ),
 
       allowPartial:
         booleanOrUndefined(
           input.allowPartial,
-          "collection.allowPartial",
+          `${label}.allowPartial`,
         ),
     };
   }
@@ -414,14 +419,120 @@ const parseCollection = (
       parseSearch(
         input.search,
         quantity,
+        `${label}.search`,
       ),
 
     allowPartial:
       booleanOrUndefined(
         input.allowPartial,
-        "collection.allowPartial",
+        `${label}.allowPartial`,
       ),
   };
+};
+
+const parseCollections = (
+  input: JsonRecord,
+): readonly ProjectPlanCollection[] => {
+  const hasLegacyCollection =
+    input.collection !==
+    undefined;
+
+  const hasCollections =
+    input.collections !==
+    undefined;
+
+  /*
+   * XOR:
+   *
+   * hay que proporcionar exactamente uno.
+   */
+  if (
+    hasLegacyCollection ===
+    hasCollections
+  ) {
+    throw new PlannerValidationError(
+      "Project must provide exactly one of 'collection' or 'collections'.",
+    );
+  }
+
+  if (
+    hasLegacyCollection
+  ) {
+    return [
+      parseCollection(
+        input.collection,
+        "collection",
+      ),
+    ];
+  }
+
+  if (
+    !Array.isArray(
+      input.collections,
+    ) ||
+    input.collections
+      .length ===
+        0
+  ) {
+    throw new PlannerValidationError(
+      "collections must contain at least one collection.",
+    );
+  }
+
+  if (
+    input.collections
+      .length >
+    maxCollections
+  ) {
+    throw new PlannerValidationError(
+      `collections exceeds the maximum of ${maxCollections} collections.`,
+    );
+  }
+
+  const collections =
+    input.collections.map(
+      (
+        collection,
+        index,
+      ) =>
+        parseCollection(
+          collection,
+          `collections[${index}]`,
+        ),
+    );
+
+  /*
+   * Una colección por blockName.
+   *
+   * Evita planes ambiguos como:
+   *
+   * collections:
+   *   oak_log x 1
+   *   oak_log x 2
+   */
+  const seenBlocks =
+    new Set<string>();
+
+  for (
+    const collection
+    of collections
+  ) {
+    if (
+      seenBlocks.has(
+        collection.blockName,
+      )
+    ) {
+      throw new PlannerValidationError(
+        `collections must not contain duplicate blockName '${collection.blockName}'.`,
+      );
+    }
+
+    seenBlocks.add(
+      collection.blockName,
+    );
+  }
+
+  return collections;
 };
 
 const parsePlacement = (
@@ -543,6 +654,7 @@ export const parseProjectPlanInput = (
       "name",
       "description",
       "collection",
+      "collections",
       "build",
     ],
     "project",
@@ -561,9 +673,9 @@ export const parseProjectPlanInput = (
         "description",
       ),
 
-    collection:
-      parseCollection(
-        input.collection,
+    collections:
+      parseCollections(
+        input,
       ),
 
     build:
