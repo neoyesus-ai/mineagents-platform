@@ -34,6 +34,9 @@ export interface DeliverCollectedResourcesOptions {
   inventoryBefore:
     number;
 
+  brokenPositions:
+    readonly WorldPosition[];
+
   handoffPosition:
     WorldPosition;
 
@@ -51,7 +54,9 @@ const sleep = (
   milliseconds: number,
 ): Promise<void> =>
   new Promise(
-    (resolve) =>
+    (
+      resolve,
+    ) =>
       setTimeout(
         resolve,
         milliseconds,
@@ -59,61 +64,47 @@ const sleep = (
   );
 
 const samePosition = (
-  left: WorldPosition,
-  right: WorldPosition,
+  left:
+    WorldPosition,
+  right:
+    WorldPosition,
 ): boolean =>
   left.dimension ===
     right.dimension &&
-  left.x === right.x &&
-  left.y === right.y &&
-  left.z === right.z;
+  left.x ===
+    right.x &&
+  left.y ===
+    right.y &&
+  left.z ===
+    right.z;
 
-const assertQuantity = (
-  quantity: number,
-): void => {
-  if (
-    !Number.isSafeInteger(
-      quantity,
-    ) ||
-    quantity < 1
-  ) {
-    throw new Error(
-      "Resource handoff quantity must be a positive safe integer.",
-    );
-  }
-};
+const expectedInventory = (
+  options:
+    DeliverCollectedResourcesOptions,
+): number =>
+  options.inventoryBefore +
+  options.quantity;
 
-const assertTimeout = (
-  timeoutMs: number,
-): void => {
-  if (
-    !Number.isSafeInteger(
-      timeoutMs,
-    ) ||
-    timeoutMs < 1
-  ) {
-    throw new Error(
-      "Resource handoff pickup timeout must be a positive safe integer.",
-    );
-  }
-};
-
-const waitForCollectedInventory =
+const waitForExpectedInventory =
   async (
     options:
       DeliverCollectedResourcesOptions,
+
+    timeoutMs:
+      number,
   ): Promise<number> => {
     const expected =
-      options.inventoryBefore +
-      options.quantity;
-
-    const deadline =
-      Date.now() +
-      options.pickupTimeoutMs;
+      expectedInventory(
+        options,
+      );
 
     const pollIntervalMs =
       options.pollIntervalMs ??
       100;
+
+    const deadline =
+      Date.now() +
+      timeoutMs;
 
     let current =
       options.driver
@@ -138,14 +129,241 @@ const waitForCollectedInventory =
           );
     }
 
+    return current;
+  };
+
+const collectPhysicalDrops =
+  async (
+    options:
+      DeliverCollectedResourcesOptions,
+  ): Promise<number> => {
+    const expected =
+      expectedInventory(
+        options,
+      );
+
+    let current =
+      await waitForExpectedInventory(
+        options,
+        Math.min(
+          500,
+          options.pickupTimeoutMs,
+        ),
+      );
+
     if (
-      current <
+      current >=
       expected
     ) {
-      throw new Error(
-        `Collector inventory did not receive ${options.quantity} ${options.itemName} within ${options.pickupTimeoutMs} ms. Expected at least ${expected}, found ${current}.`,
-      );
+      return current;
     }
+
+    const startedAt =
+      Date.now();
+
+    logger.info(
+      "handoff.pickup_started",
+      {
+        taskId:
+          options.taskId,
+
+        itemName:
+          options.itemName,
+
+        quantity:
+          options.quantity,
+
+        expectedInventory:
+          expected,
+
+        currentInventory:
+          current,
+      },
+    );
+
+    while (
+      current <
+        expected &&
+      Date.now() -
+        startedAt <
+        options.pickupTimeoutMs
+    ) {
+      const droppedItems =
+        options.driver
+          .findNearbyDroppedItems(
+            options.itemName,
+            options.brokenPositions,
+            8,
+          )
+          .filter(
+            (
+              position,
+            ) =>
+              isPositionInRegion(
+                position,
+                options.allowedRegion,
+              ),
+          );
+
+      if (
+        droppedItems.length ===
+        0
+      ) {
+        await sleep(
+          options.pollIntervalMs ??
+            100,
+        );
+
+        current =
+          options.driver
+            .getInventoryCount(
+              options.itemName,
+            );
+
+        continue;
+      }
+
+      const pickupTarget =
+        droppedItems[0];
+
+      if (
+        !pickupTarget
+      ) {
+        continue;
+      }
+
+      const state =
+        await options.driver
+          .getState();
+
+      logger.info(
+        "handoff.item_found",
+        {
+          taskId:
+            options.taskId,
+
+          itemName:
+            options.itemName,
+
+          position:
+            pickupTarget,
+
+          candidates:
+            droppedItems.length,
+        },
+      );
+
+      if (
+        !samePosition(
+          state.position,
+          pickupTarget,
+        )
+      ) {
+        logger.info(
+          "handoff.pickup_movement_started",
+          {
+            taskId:
+              options.taskId,
+
+            from:
+              state.position,
+
+            target:
+              pickupTarget,
+          },
+        );
+
+        try {
+          await options.driver.moveTo(
+            pickupTarget,
+            [
+              options.allowedRegion,
+            ],
+          );
+        } catch (
+          error
+        ) {
+          logger.info(
+            "handoff.pickup_position_rejected",
+            {
+              taskId:
+                options.taskId,
+
+              target:
+                pickupTarget,
+
+              errorName:
+                error instanceof Error
+                  ? error.name
+                  : "UnknownError",
+
+              errorMessage:
+                error instanceof Error
+                  ? error.message
+                  : "Unknown pickup movement error.",
+            },
+          );
+
+          await sleep(
+            options.pollIntervalMs ??
+              100,
+          );
+
+          continue;
+        }
+
+        const after =
+          await options.driver
+            .getState();
+
+        logger.info(
+          "handoff.pickup_movement_completed",
+          {
+            taskId:
+              options.taskId,
+
+            position:
+              after.position,
+
+            target:
+              pickupTarget,
+          },
+        );
+      }
+
+      current =
+        await waitForExpectedInventory(
+          options,
+          Math.min(
+            750,
+            Math.max(
+              1,
+              options.pickupTimeoutMs -
+                (
+                  Date.now() -
+                  startedAt
+                ),
+            ),
+          ),
+        );
+    }
+
+    logger.info(
+      "handoff.pickup_completed",
+      {
+        taskId:
+          options.taskId,
+
+        itemName:
+          options.itemName,
+
+        expectedInventory:
+          expected,
+
+        currentInventory:
+          current,
+      },
+    );
 
     return current;
   };
@@ -155,13 +373,41 @@ export const deliverCollectedResources =
     options:
       DeliverCollectedResourcesOptions,
   ): Promise<void> => {
-    assertQuantity(
-      options.quantity,
-    );
+    if (
+      !Number.isSafeInteger(
+        options.quantity,
+      ) ||
+      options.quantity <
+        1
+    ) {
+      throw new Error(
+        "Resource handoff quantity must be a positive safe integer.",
+      );
+    }
 
-    assertTimeout(
-      options.pickupTimeoutMs,
-    );
+    if (
+      !Number.isSafeInteger(
+        options.pickupTimeoutMs,
+      ) ||
+      options.pickupTimeoutMs <
+        1
+    ) {
+      throw new Error(
+        "Resource handoff pickup timeout must be a positive safe integer.",
+      );
+    }
+
+    if (
+      !Array.isArray(
+        options.brokenPositions,
+      ) ||
+      options.brokenPositions.length ===
+        0
+    ) {
+      throw new Error(
+        "Resource handoff requires at least one broken resource position.",
+      );
+    }
 
     if (
       !isPositionInRegion(
@@ -174,10 +420,24 @@ export const deliverCollectedResources =
       );
     }
 
-    const inventoryReady =
-      await waitForCollectedInventory(
+    const expected =
+      expectedInventory(
         options,
       );
+
+    const inventoryReady =
+      await collectPhysicalDrops(
+        options,
+      );
+
+    if (
+      inventoryReady <
+      expected
+    ) {
+      throw new Error(
+        `Collector inventory did not receive ${options.quantity} ${options.itemName} within ${options.pickupTimeoutMs} ms. Expected at least ${expected}, found ${inventoryReady}.`,
+      );
+    }
 
     logger.info(
       "handoff.inventory_ready",
@@ -250,6 +510,15 @@ export const deliverCollectedResources =
         .getInventoryCount(
           options.itemName,
         );
+
+    if (
+      beforeDrop <
+      options.quantity
+    ) {
+      throw new Error(
+        `Collector inventory contains only ${beforeDrop} ${options.itemName} before handoff drop.`,
+      );
+    }
 
     await options.driver
       .dropInventoryItem(

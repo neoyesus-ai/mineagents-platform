@@ -466,6 +466,215 @@ export class MineflayerDriver
       );
   }
 
+  findNearbyDroppedItems(
+    itemName: string,
+    origins:
+      readonly WorldPosition[],
+    maxDistance = 8,
+  ): readonly WorldPosition[] {
+    this.assertConnected();
+
+    this.assertInventoryItemName(
+      itemName,
+      "Dropped item discovery",
+    );
+
+    if (
+      !Array.isArray(
+        origins,
+      ) ||
+      origins.length ===
+        0
+    ) {
+      throw new MineflayerDriverError(
+        "INVALID_WRITE_REQUEST",
+
+        "Dropped item discovery requires at least one origin position.",
+      );
+    }
+
+    if (
+      !Number.isFinite(
+        maxDistance,
+      ) ||
+      maxDistance <=
+        0 ||
+      maxDistance >
+        32
+    ) {
+      throw new MineflayerDriverError(
+        "INVALID_WRITE_REQUEST",
+
+        "Dropped item discovery maxDistance must be greater than 0 and at most 32.",
+      );
+    }
+
+    const currentDimension =
+      namespacedDimension(
+        this.bot.game
+          .dimension,
+      );
+
+    for (
+      const origin
+      of origins
+    ) {
+      if (
+        origin.dimension !==
+        currentDimension
+      ) {
+        throw new MineflayerDriverError(
+          "DIMENSION_MISMATCH",
+
+          `The bot is in '${currentDimension}', not '${origin.dimension}'.`,
+        );
+      }
+    }
+
+    const maxDistanceSquared =
+      maxDistance *
+      maxDistance;
+
+    const candidates:
+      {
+        position:
+          WorldPosition;
+
+        distanceSquared:
+          number;
+      }[] = [];
+
+    for (
+      const entity
+      of Object.values(
+        this.bot.entities,
+      )
+    ) {
+      const droppedItem =
+        entity.getDroppedItem();
+
+      if (
+        !droppedItem ||
+        namespacedBlock(
+          droppedItem.name,
+        ) !==
+          itemName
+      ) {
+        continue;
+      }
+
+      let nearestDistanceSquared =
+        Number.POSITIVE_INFINITY;
+
+      for (
+        const origin
+        of origins
+      ) {
+        const dx =
+          entity.position.x -
+          (
+            origin.x +
+            0.5
+          );
+
+        const dy =
+          entity.position.y -
+          origin.y;
+
+        const dz =
+          entity.position.z -
+          (
+            origin.z +
+            0.5
+          );
+
+        const distanceSquared =
+          dx * dx +
+          dy * dy +
+          dz * dz;
+
+        nearestDistanceSquared =
+          Math.min(
+            nearestDistanceSquared,
+            distanceSquared,
+          );
+      }
+
+      if (
+        nearestDistanceSquared >
+        maxDistanceSquared
+      ) {
+        continue;
+      }
+
+      candidates.push({
+        position: {
+          dimension:
+            currentDimension,
+
+          x:
+            Math.floor(
+              entity.position.x,
+            ),
+
+          y:
+            Math.floor(
+              entity.position.y,
+            ),
+
+          z:
+            Math.floor(
+              entity.position.z,
+            ),
+        },
+
+        distanceSquared:
+          nearestDistanceSquared,
+      });
+    }
+
+    candidates.sort(
+      (
+        left,
+        right,
+      ) =>
+        left.distanceSquared -
+        right.distanceSquared,
+    );
+
+    const unique:
+      WorldPosition[] = [];
+
+    const seen =
+      new Set<string>();
+
+    for (
+      const candidate
+      of candidates
+    ) {
+      const key =
+        `${candidate.position.dimension}:${candidate.position.x}:${candidate.position.y}:${candidate.position.z}`;
+
+      if (
+        seen.has(
+          key,
+        )
+      ) {
+        continue;
+      }
+
+      seen.add(
+        key,
+      );
+
+      unique.push({
+        ...candidate.position,
+      });
+    }
+
+    return unique;
+  }
+
   async dropInventoryItem(
     itemName: string,
     quantity: number,

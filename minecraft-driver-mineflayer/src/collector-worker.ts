@@ -102,6 +102,9 @@ interface WorkerCollectResult {
     | "failed";
 
   brokenBlocks: number;
+
+  brokenPositions:
+    readonly WorldPosition[];
 }
 
 const MAX_DISCOVERY_DISTANCE =
@@ -1538,6 +1541,9 @@ export class CollectorWorker {
               result.brokenBlocks,
 
             inventoryBefore,
+
+            brokenPositions:
+              result.brokenPositions,
 
             handoffPosition:
               this.config
