@@ -133,7 +133,11 @@ const pushInventoryItem = (inventoryItems, name, quantity) => {
   });
 };
 
-const createDroppedItemEntity = (position, itemName) => ({
+const createDroppedItemEntity = (
+  position,
+  itemName,
+  count = 1,
+) => ({
   position: new Vec3(
     position.x + 0.5,
     position.y,
@@ -143,7 +147,7 @@ const createDroppedItemEntity = (position, itemName) => ({
   getDroppedItem() {
     return {
       name: itemName,
-      count: 1,
+      count,
     };
   },
 });
@@ -652,6 +656,647 @@ test(
     assert.equal(
       finalBuildTask.status,
       "completed",
+    );
+  },
+);
+
+test(
+  "planned project transfers two physical resources before building two placements",
+  async (t) => {
+    const tempDir = await mkdtemp(
+      join(
+        tmpdir(),
+        "mineagents-resource-project-multi-e2e-",
+      ),
+    );
+
+    const coordinator =
+      createCoordinatorServer({
+        dbPath:
+          join(
+            tempDir,
+            "coordinator.sqlite",
+          ),
+      });
+
+    const coordinatorUrl =
+      await listen(
+        coordinator,
+      );
+
+    t.after(async () => {
+      await close(
+        coordinator,
+      );
+
+      await rm(
+        tempDir,
+        {
+          recursive:
+            true,
+
+          force:
+            true,
+        },
+      );
+    });
+
+    const firstSource = {
+      dimension:
+        "minecraft:overworld",
+
+      x:
+        8,
+
+      y:
+        64,
+
+      z:
+        0,
+    };
+
+    const secondSource = {
+      dimension:
+        "minecraft:overworld",
+
+      x:
+        10,
+
+      y:
+        64,
+
+      z:
+        0,
+    };
+
+    const firstBuild = {
+      dimension:
+        "minecraft:overworld",
+
+      x:
+        0,
+
+      y:
+        64,
+
+      z:
+        8,
+    };
+
+    const secondBuild = {
+      dimension:
+        "minecraft:overworld",
+
+      x:
+        2,
+
+      y:
+        64,
+
+      z:
+        8,
+    };
+
+    const sharedEntities = {};
+
+    let entitySequence =
+      0;
+
+    const nextEntityId =
+      () =>
+        `multi-drop-${++entitySequence}`;
+
+    const collectorWorld =
+      createWritableMineflayerBot({
+        onDig:
+          async ({
+            block,
+            setBlock,
+          }) => {
+            setBlock(
+              block.position,
+              "air",
+            );
+
+            sharedEntities[
+              nextEntityId()
+            ] =
+              createDroppedItemEntity(
+                {
+                  x:
+                    block.position.x +
+                    1,
+
+                  y:
+                    block.position.y,
+
+                  z:
+                    block.position.z,
+                },
+
+                "oak_log",
+              );
+          },
+
+        onToss:
+          async ({
+            type,
+            count,
+            inventoryItems,
+          }) => {
+            assert.equal(
+              type,
+              17,
+            );
+
+            assert.equal(
+              count,
+              2,
+            );
+
+            decrementInventory(
+              inventoryItems,
+              "oak_log",
+              count,
+            );
+
+            /*
+             * Representamos los dos recursos
+             * entregados como un stack físico
+             * de dos oak_log.
+             */
+            sharedEntities[
+              nextEntityId()
+            ] =
+              createDroppedItemEntity(
+                {
+                  x:
+                    handoffPosition.x +
+                    2,
+
+                  y:
+                    handoffPosition.y,
+
+                  z:
+                    handoffPosition.z,
+                },
+
+                "oak_log",
+
+                2,
+              );
+          },
+      });
+
+    collectorWorld.bot.entities =
+      sharedEntities;
+
+    collectorWorld.bot.entity.position =
+      new Vec3(
+        handoffPosition.x,
+        handoffPosition.y,
+        handoffPosition.z,
+      );
+
+    collectorWorld.bot.registry = {
+      blocksByName: {
+        oak_log: {
+          id:
+            17,
+        },
+      },
+    };
+
+    collectorWorld.setBlock(
+      firstSource,
+      "oak_log",
+    );
+
+    collectorWorld.setBlock(
+      secondSource,
+      "oak_log",
+    );
+
+    addWalkableSupport(
+      collectorWorld,
+      firstSource,
+    );
+
+    addWalkableSupport(
+      collectorWorld,
+      secondSource,
+    );
+
+    collectorWorld.bot.findBlocks =
+      () => [
+        new Vec3(
+          firstSource.x,
+          firstSource.y,
+          firstSource.z,
+        ),
+
+        new Vec3(
+          secondSource.x,
+          secondSource.y,
+          secondSource.z,
+        ),
+      ];
+
+    const collectorDriver =
+      new MineflayerDriver(
+        collectorWorld.bot,
+      );
+
+    installMovementAndPickup(
+      collectorDriver,
+      collectorWorld,
+      sharedEntities,
+    );
+
+    let builderWorld;
+
+    builderWorld =
+      createWritableMineflayerBot({
+        onPlace:
+          async ({
+            bot,
+            referenceBlock,
+            faceVector,
+            setBlock,
+          }) => {
+            setBlock(
+              referenceBlock
+                .position
+                .plus(
+                  faceVector,
+                ),
+
+              bot.heldItem.name,
+            );
+
+            decrementInventory(
+              builderWorld
+                .inventoryItems,
+
+              bot.heldItem.name,
+
+              1,
+            );
+          },
+      });
+
+    builderWorld.bot.entities =
+      sharedEntities;
+
+    builderWorld.bot.entity.position =
+      new Vec3(
+        4,
+        64,
+        4,
+      );
+
+    addWalkableSupport(
+      builderWorld,
+      firstBuild,
+    );
+
+    addWalkableSupport(
+      builderWorld,
+      secondBuild,
+    );
+
+    const builderDriver =
+      new MineflayerDriver(
+        builderWorld.bot,
+      );
+
+    installMovementAndPickup(
+      builderDriver,
+      builderWorld,
+      sharedEntities,
+    );
+
+    const collectorWorker =
+      new CollectorWorker(
+        collectorDriver,
+        collectorConfig(
+          coordinatorUrl,
+        ),
+      );
+
+    const builderWorker =
+      new BuilderWorker(
+        builderDriver,
+        builderConfig(
+          coordinatorUrl,
+        ),
+      );
+
+    installCoordinatorClient(
+      collectorWorker,
+      coordinatorUrl,
+    );
+
+    installCoordinatorClient(
+      builderWorker,
+      coordinatorUrl,
+    );
+
+    const {
+      agent:
+        collectorAgent,
+    } =
+      await jsonRequest(
+        coordinatorUrl,
+        "/agents/heartbeat",
+        {
+          method:
+            "POST",
+
+          body: {
+            name:
+              "collector-multi-e2e",
+
+            role:
+              "collector",
+          },
+        },
+      );
+
+    const {
+      agent:
+        builderAgent,
+    } =
+      await jsonRequest(
+        coordinatorUrl,
+        "/agents/heartbeat",
+        {
+          method:
+            "POST",
+
+          body: {
+            name:
+              "builder-multi-e2e",
+
+            role:
+              "builder",
+          },
+        },
+      );
+
+    const {
+      tasks:
+        plannedTasks,
+    } =
+      await jsonRequest(
+        coordinatorUrl,
+        "/projects/plan",
+        {
+          method:
+            "POST",
+
+          status:
+            201,
+
+          body: {
+            name:
+              "Two resource physical handoff",
+
+            description:
+              "Collector transfers two oak logs for two dependent placements.",
+
+            collection: {
+              blockName:
+                "minecraft:oak_log",
+
+              quantity:
+                2,
+
+              search: {
+                dimension:
+                  "minecraft:overworld",
+
+                maxDistance:
+                  16,
+
+                maxCandidates:
+                  16,
+              },
+            },
+
+            build: {
+              placements: [
+                {
+                  position:
+                    firstBuild,
+
+                  blockName:
+                    "minecraft:oak_log",
+                },
+
+                {
+                  position:
+                    secondBuild,
+
+                  blockName:
+                    "minecraft:oak_log",
+                },
+              ],
+            },
+          },
+        },
+      );
+
+    const collectTask =
+      plannedTasks.find(
+        (task) =>
+          task.kind ===
+          "collect-blocks",
+      );
+
+    const buildTask =
+      plannedTasks.find(
+        (task) =>
+          task.kind ===
+          "build-blueprint",
+      );
+
+    assert.ok(
+      collectTask,
+    );
+
+    assert.ok(
+      buildTask,
+    );
+
+    assert.deepEqual(
+      buildTask.dependsOnTaskIds,
+      [
+        collectTask.id,
+      ],
+    );
+
+    /*
+     * Builder todavía no puede reclamar.
+     */
+    assert.equal(
+      await claimTask(
+        coordinatorUrl,
+        builderAgent.id,
+      ),
+      null,
+    );
+
+    const claimedCollectTask =
+      await claimTask(
+        coordinatorUrl,
+        collectorAgent.id,
+      );
+
+    assert.ok(
+      claimedCollectTask,
+    );
+
+    assert.equal(
+      claimedCollectTask.id,
+      collectTask.id,
+    );
+
+    await collectorWorker.executeTask(
+      claimedCollectTask,
+    );
+
+    assert.equal(
+      collectorWorld.blockNameAt(
+        firstSource,
+      ),
+      "air",
+    );
+
+    assert.equal(
+      collectorWorld.blockNameAt(
+        secondSource,
+      ),
+      "air",
+    );
+
+    assert.equal(
+      collectorDriver.getInventoryCount(
+        "minecraft:oak_log",
+      ),
+      0,
+    );
+
+    /*
+     * Tras el collector debe quedar un único
+     * stack físico que representa 2 oak_log.
+     */
+    assert.equal(
+      Object.keys(
+        sharedEntities,
+      ).length,
+      1,
+    );
+
+    const claimedBuildTask =
+      await claimTask(
+        coordinatorUrl,
+        builderAgent.id,
+      );
+
+    assert.ok(
+      claimedBuildTask,
+    );
+
+    assert.equal(
+      claimedBuildTask.id,
+      buildTask.id,
+    );
+
+    assert.equal(
+      builderDriver.getInventoryCount(
+        "minecraft:oak_log",
+      ),
+      0,
+    );
+
+    await builderWorker.executeTask(
+      claimedBuildTask,
+    );
+
+    /*
+     * Builder ha recogido y consumido ambos
+     * recursos.
+     */
+    assert.equal(
+      Object.keys(
+        sharedEntities,
+      ).length,
+      0,
+    );
+
+    assert.equal(
+      builderDriver.getInventoryCount(
+        "minecraft:oak_log",
+      ),
+      0,
+    );
+
+    assert.equal(
+      builderWorld.blockNameAt(
+        firstBuild,
+      ),
+      "oak_log",
+    );
+
+    assert.equal(
+      builderWorld.blockNameAt(
+        secondBuild,
+      ),
+      "oak_log",
+    );
+
+    const {
+      tasks:
+        finalTasks,
+    } =
+      await jsonRequest(
+        coordinatorUrl,
+        "/tasks",
+      );
+
+    const finalCollectTask =
+      finalTasks.find(
+        (task) =>
+          task.id ===
+          collectTask.id,
+      );
+
+    const finalBuildTask =
+      finalTasks.find(
+        (task) =>
+          task.id ===
+          buildTask.id,
+      );
+
+    assert.equal(
+      finalCollectTask.status,
+      "completed",
+    );
+
+    assert.equal(
+      finalBuildTask.status,
+      "completed",
+    );
+
+    assert.equal(
+      finalCollectTask.failureReason,
+      null,
+    );
+
+    assert.equal(
+      finalBuildTask.failureReason,
+      null,
     );
   },
 );
