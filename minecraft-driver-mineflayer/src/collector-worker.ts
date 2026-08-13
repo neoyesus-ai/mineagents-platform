@@ -35,6 +35,10 @@ import {
   CoordinatorWorkerClient,
 } from "./coordinator-client.js";
 
+import {
+  deliverCollectedResources,
+} from "./resource-handoff.js";
+
 const logger =
   createJsonLogger({
     service:
@@ -1385,6 +1389,18 @@ export class CollectorWorker {
             resolved.autonomousMovement,
         };
 
+      /*
+       * Guardamos el inventario antes de romper
+       * bloques para poder verificar que los
+       * recursos recolectados realmente entran
+       * en el inventario antes del handoff.
+       */
+      const inventoryBefore =
+        this.driver
+          .getInventoryCount(
+            payload.blockName,
+          );
+
       const authorization =
         createAuthorization(
           task,
@@ -1490,6 +1506,53 @@ export class CollectorWorker {
         result.status ===
         "completed"
       ) {
+        /*
+         * Si hay un punto de handoff configurado,
+         * la tarea NO se considera completada
+         * hasta que:
+         *
+         * 1. Los recursos hayan entrado realmente
+         *    en el inventario.
+         * 2. El collector llegue al punto de
+         *    entrega.
+         * 3. Suelte exactamente la cantidad
+         *    recolectada.
+         * 4. El driver verifique la disminución
+         *    del inventario.
+         */
+        if (
+          this.config
+            .handoffPosition
+        ) {
+          await deliverCollectedResources({
+            driver:
+              this.driver,
+
+            taskId:
+              task.id,
+
+            itemName:
+              payload.blockName,
+
+            quantity:
+              result.brokenBlocks,
+
+            inventoryBefore,
+
+            handoffPosition:
+              this.config
+                .handoffPosition,
+
+            allowedRegion:
+              this.config
+                .allowedRegion,
+
+            pickupTimeoutMs:
+              this.config
+                .handoffPickupTimeoutMs,
+          });
+        }
+
         await this.client.patchTask(
           task.id,
           {
