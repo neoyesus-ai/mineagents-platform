@@ -33,15 +33,6 @@ export interface ProjectPlanCollection {
   allowPartial?: boolean;
 }
 
-/*
- * Estrategia para proyectos cuyos materiales
- * se derivan automáticamente de
- * build.placements.
- *
- * Como no conocemos posiciones explícitas
- * de recursos por material, la derivación
- * automática utiliza búsqueda autónoma.
- */
 export interface ProjectPlanCollectionStrategy {
   search:
     ProjectPlanSearch;
@@ -57,24 +48,35 @@ export interface ProjectPlanBuild {
 }
 
 /*
- * El parser acepta tres formatos externos:
+ * El parser acepta cuatro formatos externos:
  *
- * Legacy:
+ * 1. Legacy:
  *
- *   collection: {...}
+ *    collection: {...}
  *
- * Multi-material explícito:
+ * 2. Multi-material explícito:
  *
- *   collections: [{...}, {...}]
+ *    collections: [{...}, {...}]
  *
- * Derivación automática:
+ * 3. Estrategia común derivada:
  *
- *   collectionStrategy: {
- *     search: {...}
- *   }
+ *    collectionStrategy: {
+ *      search: {...}
+ *    }
  *
- * Los tres formatos se normalizan
- * internamente a collections[].
+ * 4. Estrategia derivada por material:
+ *
+ *    collectionStrategies: {
+ *      "minecraft:oak_log": {
+ *        search: {...}
+ *      },
+ *      "minecraft:cobblestone": {
+ *        search: {...}
+ *      }
+ *    }
+ *
+ * Todos se normalizan internamente a
+ * collections[].
  */
 export interface ProjectPlanInput {
   name: string;
