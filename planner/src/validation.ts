@@ -567,6 +567,45 @@ const deriveMaterialRequirements = (
   return requirements;
 };
 
+const parseCollectionStrategyValue = (
+  value: unknown,
+  quantity: number,
+  label: string,
+): {
+  search: ProjectPlanSearch;
+  allowPartial?: boolean;
+} => {
+  const input =
+    asRecord(
+      value,
+      label,
+    );
+
+  assertKnownKeys(
+    input,
+    [
+      "search",
+      "allowPartial",
+    ],
+    label,
+  );
+
+  return {
+    search:
+      parseSearch(
+        input.search,
+        quantity,
+        `${label}.search`,
+      ),
+
+    allowPartial:
+      booleanOrUndefined(
+        input.allowPartial,
+        `${label}.allowPartial`,
+      ),
+  };
+};
+
 const parseCollectionStrategy = (
   value: unknown,
   build: ProjectPlanBuild,
@@ -637,6 +676,126 @@ const parseCollectionStrategy = (
       allowPartial,
     }),
   );
+};
+
+const parseCollectionStrategies = (
+  value: unknown,
+  build:
+    ProjectPlanBuild,
+): readonly ProjectPlanCollection[] => {
+  const input =
+    asRecord(
+      value,
+      "collectionStrategies",
+    );
+
+  const requirements =
+    deriveMaterialRequirements(
+      build,
+    );
+
+  if (
+    requirements.size >
+    maxCollections
+  ) {
+    throw new PlannerValidationError(
+      `Derived project materials exceed the maximum of ${maxCollections} collections.`,
+    );
+  }
+
+  const configuredBlocks =
+    Object.keys(
+      input,
+    );
+
+  if (
+    configuredBlocks.length ===
+    0
+  ) {
+    throw new PlannerValidationError(
+      "collectionStrategies must contain at least one material strategy.",
+    );
+  }
+
+  if (
+    configuredBlocks.length >
+    maxCollections
+  ) {
+    throw new PlannerValidationError(
+      `collectionStrategies exceeds the maximum of ${maxCollections} strategies.`,
+    );
+  }
+
+  for (
+    const blockName
+    of configuredBlocks
+  ) {
+    if (
+      !blockNamePattern.test(
+        blockName,
+      )
+    ) {
+      throw new PlannerValidationError(
+        `collectionStrategies contains invalid blockName '${blockName}'.`,
+      );
+    }
+
+    if (
+      !requirements.has(
+        blockName,
+      )
+    ) {
+      throw new PlannerValidationError(
+        `collectionStrategies provides a strategy for unused material '${blockName}'.`,
+      );
+    }
+  }
+
+  const collections:
+    ProjectPlanCollection[] =
+      [];
+
+  for (
+    const [
+      blockName,
+      quantity,
+    ]
+    of requirements
+  ) {
+    const strategyValue =
+      input[
+        blockName
+      ];
+
+    if (
+      strategyValue ===
+      undefined
+    ) {
+      throw new PlannerValidationError(
+        `collectionStrategies must provide a strategy for required material '${blockName}'.`,
+      );
+    }
+
+    const strategy =
+      parseCollectionStrategyValue(
+        strategyValue,
+        quantity,
+        `collectionStrategies.${blockName}`,
+      );
+
+    collections.push({
+      blockName,
+      quantity,
+
+      search:
+        strategy.search,
+
+      allowPartial:
+        strategy.allowPartial,
+    });
+  }
+
+  return collections;
 };
 
 const parseExplicitCollections = (
@@ -730,11 +889,16 @@ const parseCollections = (
     input.collectionStrategy !==
     undefined;
 
+  const hasCollectionStrategies =
+    input.collectionStrategies !==
+    undefined;
+
   const providedModes =
     [
       hasLegacyCollection,
       hasCollections,
       hasCollectionStrategy,
+      hasCollectionStrategies,
     ].filter(
       Boolean,
     ).length;
@@ -744,7 +908,7 @@ const parseCollections = (
     1
   ) {
     throw new PlannerValidationError(
-      "Project must provide exactly one of 'collection', 'collections' or 'collectionStrategy'.",
+      "Project must provide exactly one of 'collection', 'collections', 'collectionStrategy' or 'collectionStrategies'.",
     );
   }
 
@@ -753,6 +917,15 @@ const parseCollections = (
   ) {
     return parseCollectionStrategy(
       input.collectionStrategy,
+      build,
+    );
+  }
+
+  if (
+    hasCollectionStrategies
+  ) {
+    return parseCollectionStrategies(
+      input.collectionStrategies,
       build,
     );
   }
@@ -840,6 +1013,7 @@ export const parseProjectPlanInput = (
       "collection",
       "collections",
       "collectionStrategy",
+      "collectionStrategies",
       "build",
     ],
     "project",

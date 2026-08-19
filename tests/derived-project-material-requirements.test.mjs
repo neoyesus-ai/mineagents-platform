@@ -497,7 +497,7 @@ test(
       JSON.stringify(
         body,
       ),
-      /exactly one of 'collection', 'collections' or 'collectionStrategy'/i,
+      /exactly one of 'collection', 'collections', 'collectionStrategy' or 'collectionStrategies'/i,
     );
   },
 );
